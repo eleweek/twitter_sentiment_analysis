@@ -20,6 +20,27 @@ from io import open
 FORMAT = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
+
+class Sentiment140Tweet(object):
+    def __init__(self, row):
+        self.original_text = row[-1]
+        self.polarity = (int(row[0]) - 2) / 2
+        self.words = wordpunct_tokenize(self.original_text)
+
+    def get_words(self):
+        # TODO: support for different tokenizers
+        return self.words
+
+    def is_neutral(self):
+        return self.polarity == 0
+
+    def is_positive(self):
+        return self.polarity > 0
+
+    def is_negative(self):
+        return self.polarity < 0
+
+
 def load_data_from_csv(filename):
     parsed_file = []
     with open(filename, encoding='latin1') as csvfile:
@@ -27,32 +48,16 @@ def load_data_from_csv(filename):
         num = 0
         for row in reader:
             num += 1
-            polarity = int(row[0])
-            text = row[-1]
-            # print(polarity, ' '.join(wordpunct_tokenize(text)))
-            words = wordpunct_tokenize(text)
-            parsed_file.append((polarity, words))
+            parsed_file.append(Sentiment140Tweet(row))
 
     return parsed_file
-
-
-"""
-def get_np_vectors(model, data, is_train):
-    n_polarized = sum([1 for d in data if d[0] != 2])
-
-    arrays = numpy.zeros((n_polarized, 100))
-    labels = numpy.zeros(n_polarized)
-
-    for enumerate(d
-"""
 
 
 def run(train_file_csv, test_file_csv, model_file_name):
     train_file = load_data_from_csv(train_file_csv)
     test_file = load_data_from_csv(test_file_csv)
 
-    # test_file = [(polarity, text) for (polarity, text) in test_file if polarity != 2]
-    test_file = [(polarity, text) for (polarity, text) in test_file]
+    test_file = [tweet for tweet in test_file if not tweet.is_neutral()]
     logging.info("Len test file = {}".format(len(test_file)))
 
     model = Doc2Vec.load(model_file_name)
@@ -66,18 +71,16 @@ def run(train_file_csv, test_file_csv, model_file_name):
         prefix_train_pos = 'TRAIN_ITEM_{}'.format(i)
 
         train_arrays[i] = model.docvecs[prefix_train_pos]
-        train_labels[i] = train_file[i][0] / 4
-        train_labels[i] = 2 * train_labels[i] - 1
+        train_labels[i] = train_file[i].polarity
 
-    for i, (polarity, text) in enumerate(test_file):
-        test_arrays[i] = model.infer_vector(text)
+    for i, tweet in enumerate(test_file):
+        test_arrays[i] = model.infer_vector(tweet.words)
         # if polarity == 2:
         #    continue
         # test_arrays[i] = model[text]
         # test_labels[i] = polarity / 4
         # test_labels[i] = 2 * test_labels[i] - 1
-        test_labels[i] = (polarity - 2) / 2
-
+        test_labels[i] = tweet.polarity
 
     logging.info('Fitting')
     # clf = LogisticRegression()
@@ -92,32 +95,14 @@ def run(train_file_csv, test_file_csv, model_file_name):
     logging.info("Done fitting")
     print(clf.score(train_arrays, train_labels))
     print(clf.score(test_arrays, test_labels))
-    """
-    pred = [[0] * 3 for _ in range(3)]
-    for p, label in zip(clf.predict(test_arrays), test_labels):
-        # p = int(p)
-        label = int(label)
-        # print(label, p)
-        if p >= 0.35:
-            p = 1
-        elif p <= -0.35:
-            p = -1
-        else:
-            p = 0
-        pred[label + 1][p + 1] += 1
-
-    for label in range(3):
-        print(' '.join(map(str, pred[label])))
-    """
 
 
-def train(train_file_csv, test_file_csv, model_file_name, epochs):
+def train_doc2vec(train_file_csv, model_file_name, epochs):
     train_file = load_data_from_csv(train_file_csv)
-    test_file = load_data_from_csv(test_file_csv)
 
     tagged_docs = []
-    for index, (polarity, text) in enumerate(train_file):
-        tagged_docs.append(TaggedDocument(text, ["TRAIN_ITEM_{}".format(index)]))
+    for index, tweet in enumerate(train_file):
+        tagged_docs.append(TaggedDocument(tweet.words, ["TRAIN_ITEM_{}".format(index)]))
 
     logging.info('D2V')
     model = Doc2Vec(min_count=1, window=10, size=100, sample=1e-5, negative=5, workers=12)
@@ -133,9 +118,9 @@ def train(train_file_csv, test_file_csv, model_file_name, epochs):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "train":
-        train(sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]))
-    elif sys.argv[1] == "run":
+    if sys.argv[1] == "train_doc2vec":
+        train_doc2vec(sys.argv[2], sys.argv[4], int(sys.argv[5]))
+    elif sys.argv[1] == "train_and_test_classifier":
         run(sys.argv[2], sys.argv[3], sys.argv[4])
     else:
         assert False
