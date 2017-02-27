@@ -8,12 +8,7 @@ import numpy
 from nltk.tokenize import wordpunct_tokenize
 from gensim.models.doc2vec import TaggedDocument
 from gensim.models import Doc2Vec
-from sklearn.linear_model import LogisticRegression
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn import svm
-from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
 from sklearn.neural_network import MLPClassifier
-from sklearn.neural_network import MLPRegressor
 
 from io import open
 
@@ -21,16 +16,7 @@ FORMAT = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 
-class Sentiment140Tweet(object):
-    def __init__(self, row):
-        self.original_text = row[-1]
-        self.polarity = (int(row[0]) - 2) / 2
-        self.words = wordpunct_tokenize(self.original_text)
-
-    def get_words(self):
-        # TODO: support for different tokenizers
-        return self.words
-
+class Tweet(object):
     def is_neutral(self):
         return self.polarity == 0
 
@@ -40,56 +26,97 @@ class Sentiment140Tweet(object):
     def is_negative(self):
         return self.polarity < 0
 
+    def get_words(self):
+        # TODO: support for different tokenizers
+        return self.words
 
-def load_data_from_csv(filename):
+
+class Sentiment140Tweet(Tweet):
+    def __init__(self, row):
+        self.original_text = row[-1]
+        self.text = row[-1]
+        self.polarity = (int(row[0]) - 2) / 2
+        assert self.polarity in (-1, 0, 1)
+        self.words = wordpunct_tokenize(self.original_text)
+
+
+class MokoronTweet(Tweet):
+    def __init__(self, row):
+        # TODO: replace with regex. Replace wider range of emoticons.
+        self.original_text = row[3]
+        self.original_text = self.original_text.replace(':)', '').replace(':(', '').replace(':D', '')
+        self.polarity = int(row[4])
+        assert self.polarity in (-1, 0, 1)
+        self.words = wordpunct_tokenize(self.original_text)
+
+
+def load_and_shuffle_mokoron_dataset(positive_filename, negative_filename):
+    parsed_dataset = []
+    for filename in (positive_filename, negative_filename):
+        with open(filename) as csvfile:
+            reader = csv.reader((line.replace('\0', '') for line in csvfile), delimiter=';')
+            num = 1
+            for row in reader:
+                # print(num, row)
+                num += 1
+                parsed_dataset.append(MokoronTweet(row))
+                # print(parsed_dataset[-1].words, parsed_dataset[-1].polarity)
+
+    # random.shuffle(parsed_dataset)
+    return parsed_dataset
+
+
+def load_sentiment140_dataset_part(filename):
     parsed_file = []
     with open(filename, encoding='latin1') as csvfile:
         reader = csv.reader(csvfile)
-        num = 0
         for row in reader:
-            num += 1
             parsed_file.append(Sentiment140Tweet(row))
 
     return parsed_file
 
 
-def run(train_file_csv, test_file_csv, model_file_name):
-    train_file = load_data_from_csv(train_file_csv)
-    test_file = load_data_from_csv(test_file_csv)
+def sentiment140_train_and_test_classifier(train_file_csv, test_file_csv, model_file_name):
+    train_data = load_sentiment140_dataset_part(train_file_csv)
+    test_data = load_sentiment140_dataset_part(test_file_csv)
+    test_data = [tweet for tweet in test_data if not tweet.is_neutral()]
 
-    test_file = [tweet for tweet in test_file if not tweet.is_neutral()]
-    logging.info("Len test file = {}".format(len(test_file)))
+    doc2vec_model = Doc2Vec.load(model_file_name)
+    _train_and_test_classifier(train_data, test_data, doc2vec_model)
 
-    model = Doc2Vec.load(model_file_name)
-    train_arrays = numpy.zeros((len(train_file), 100))
-    train_labels = numpy.zeros(len(train_file))
 
-    test_arrays = numpy.zeros((len(test_file), 100))
-    test_labels = numpy.zeros(len(test_file))
+def print_dataset_stats(data):
+    hist = defaultdict(int)
+    for i in data:
+        hist[i.polarity] += 1
 
-    for i in range(len(train_file)):
+    for polarity, count in sorted(hist.items()):
+        print(polarity, count)
+
+
+def _train_and_test_classifier(train_data, test_data, doc2vec_model):
+    logging.info("Len test data = {}".format(len(test_data)))
+    print_dataset_stats(train_data)
+    print_dataset_stats(test_data)
+
+    train_arrays = numpy.zeros((len(train_data), 100))
+    train_labels = numpy.zeros(len(train_data))
+
+    test_arrays = numpy.zeros((len(test_data), 100))
+    test_labels = numpy.zeros(len(test_data))
+
+    for i in range(len(train_data)):
         prefix_train_pos = 'TRAIN_ITEM_{}'.format(i)
 
-        train_arrays[i] = model.docvecs[prefix_train_pos]
-        train_labels[i] = train_file[i].polarity
+        train_arrays[i] = doc2vec_model.docvecs[prefix_train_pos]
+        train_labels[i] = train_data[i].polarity
 
-    for i, tweet in enumerate(test_file):
-        test_arrays[i] = model.infer_vector(tweet.words)
-        # if polarity == 2:
-        #    continue
-        # test_arrays[i] = model[text]
-        # test_labels[i] = polarity / 4
-        # test_labels[i] = 2 * test_labels[i] - 1
+    for i, tweet in enumerate(test_data):
+        test_arrays[i] = doc2vec_model.infer_vector(tweet.words)
         test_labels[i] = tweet.polarity
 
     logging.info('Fitting')
-    # clf = LogisticRegression()
     clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(150, 10), random_state=1)
-    # clf = MLPRegressor(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(150, 10), random_state=1)
-    # classifier.fit(train_arrays, train_labels)
-    # clf = svm.SVC()
-    # clf = KNeighborsClassifier(5)
-    # clf = RandomForestClassifier(max_depth=5, n_estimators=500)
     clf.fit(train_arrays, train_labels)
 
     logging.info("Done fitting")
@@ -97,11 +124,27 @@ def run(train_file_csv, test_file_csv, model_file_name):
     print(clf.score(test_arrays, test_labels))
 
 
-def train_doc2vec(train_file_csv, model_file_name, epochs):
-    train_file = load_data_from_csv(train_file_csv)
+def mokoron_train_and_test_classifier(train_file_prefix, model_file_name):
+    train_data = load_and_shuffle_mokoron_dataset(train_file_prefix + "positive.csv", train_file_prefix + "negative.csv")
+    doc2vec_model = Doc2Vec.load(model_file_name)
 
+    _train_and_test_classifier(train_data, train_data, doc2vec_model)
+
+
+def train_sentiment140_doc2vec(train_file_csv, model_file_name, epochs):
+    train_data = load_sentiment140_dataset_part(train_file_csv)
+    train_doc2vec(train_data, model_file_name, epochs)
+
+
+def train_mokoron_doc2vec(train_file_prefix, model_file_name, epochs):
+    train_data = load_and_shuffle_mokoron_dataset(train_file_prefix + "positive.csv", train_file_prefix + "negative.csv")
+
+    train_doc2vec(train_data, model_file_name, epochs)
+
+
+def train_doc2vec(train_data, model_file_name, epochs):
     tagged_docs = []
-    for index, tweet in enumerate(train_file):
+    for index, tweet in enumerate(train_data):
         tagged_docs.append(TaggedDocument(tweet.words, ["TRAIN_ITEM_{}".format(index)]))
 
     logging.info('D2V')
@@ -118,9 +161,13 @@ def train_doc2vec(train_file_csv, model_file_name, epochs):
 
 
 if __name__ == "__main__":
-    if sys.argv[1] == "train_doc2vec":
-        train_doc2vec(sys.argv[2], sys.argv[4], int(sys.argv[5]))
-    elif sys.argv[1] == "train_and_test_classifier":
-        run(sys.argv[2], sys.argv[3], sys.argv[4])
+    if sys.argv[1] == "sentiment140_train_doc2vec":
+        train_sentiment140_doc2vec(sys.argv[2], sys.argv[4], int(sys.argv[5]))
+    elif sys.argv[1] == "sentiment140_train_and_test_classifier":
+        sentiment140_train_and_test_classifier(sys.argv[2], sys.argv[3], sys.argv[4])
+    elif sys.argv[1] == "mokoron_train_doc2vec":
+        train_mokoron_doc2vec(sys.argv[2], sys.argv[4], int(sys.argv[5]))
+    elif sys.argv[1] == "mokoron_train_and_test_classifier":
+        mokoron_train_and_test_classifier(sys.argv[2], sys.argv[4])
     else:
         assert False
