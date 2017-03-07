@@ -37,20 +37,29 @@ class Sentiment140Tweet(Tweet):
         self.text = row[-1]
         self.polarity = (int(row[0]) - 2) / 2
         assert self.polarity in (-1, 0, 1)
-        self.words = wordpunct_tokenize(self.original_text)
+        self.words = wordpunct_tokenize(self.text)
 
 
 class MokoronTweet(Tweet):
-    def __init__(self, row):
+    def __init__(self, text, polarity=None):
         # TODO: replace with regex. Replace wider range of emoticons.
-        self.original_text = row[3]
-        self.original_text = self.original_text.replace(':)', '').replace(':(', '').replace(':D', '')
-        self.polarity = int(row[4])
-        assert self.polarity in (-1, 0, 1)
+        self.original_text = text
+        self.original_text = self.original_text.replace(':)', '').replace(':(', '').replace(':D', '').replace(')', '').replace('(', '')
+        self.polarity = polarity
+        assert self.polarity in (-1, 0, 1, None)
         self.words = wordpunct_tokenize(self.original_text)
 
+    @classmethod
+    def from_string(self, s):
+        return MokoronTweet(s)
 
-def load_and_shuffle_mokoron_dataset(positive_filename, negative_filename):
+    @classmethod
+    def from_csv_row(self, row):
+        # TODO: replace with regex. Replace wider range of emoticons.
+        return MokoronTweet(row[3], int(row[4]))
+
+
+def load_and_shuffle_mokoron_dataset(positive_filename, negative_filename, unrated_filename=None):
     parsed_dataset = []
     for filename in (positive_filename, negative_filename):
         with open(filename) as csvfile:
@@ -59,9 +68,16 @@ def load_and_shuffle_mokoron_dataset(positive_filename, negative_filename):
             for row in reader:
                 # print(num, row)
                 num += 1
-                parsed_dataset.append(MokoronTweet(row))
+                parsed_dataset.append(MokoronTweet.from_csv_row(row))
                 # print(parsed_dataset[-1].words, parsed_dataset[-1].polarity)
 
+    if unrated_filename:
+        with open(unrated_filename) as unrated_file:
+            print("Loading stuff")
+            for line in unrated_file:
+                parsed_dataset.append(MokoronTweet.from_string(line))
+
+    logging.info("Loaded dataset having {} tweets".format(len(parsed_dataset)))
     # random.shuffle(parsed_dataset)
     return parsed_dataset
 
@@ -137,7 +153,7 @@ def train_sentiment140_doc2vec(train_file_csv, model_file_name, epochs):
 
 
 def train_mokoron_doc2vec(train_file_prefix, model_file_name, epochs):
-    train_data = load_and_shuffle_mokoron_dataset(train_file_prefix + "positive.csv", train_file_prefix + "negative.csv")
+    train_data = load_and_shuffle_mokoron_dataset(train_file_prefix + "positive.csv", train_file_prefix + "negative.csv", train_file_prefix + "unrated.txt")
 
     train_doc2vec(train_data, model_file_name, epochs)
 
