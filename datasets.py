@@ -136,8 +136,8 @@ def get_dataset_stats(data):
     return stats
 
 
-def print_dataset_stats(data):
+def print_dataset_stats(data, dataset_name):
     stats = get_dataset_stats(data)
-    print("Dataset stats")
+    print("Dataset stats: {}".format(dataset_name))
     for polarity, count in sorted(stats.items()):
         print("{} -> {}".format(polarity, count))

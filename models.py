@@ -17,8 +17,8 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
 
     @staticmethod
     def load(filename_prefix):
-        new_instance = SimpleDoc2Vec()
-        new_instance.model.load(filename_prefix)
+        new_instance = SimpleDoc2Vec(None)
+        new_instance.model = Doc2Vec.load(filename_prefix)
 
         return new_instance
 
@@ -30,6 +30,7 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
         self.model = Doc2Vec(min_count=1, window=10, size=100, sample=1e-5, negative=5, workers=12, *args, **kwargs)
         self._epochs = epochs
         self._tweet_to_index = {}
+        self.features_number = size
 
     def train(self, train_data):
         logging.info("Training Doc2Vec model")
@@ -47,11 +48,14 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
             random.shuffle(tagged_docs)
             self.model.train(tagged_docs)
 
-    def infer_vector(self, tweet):
+    def get_features(self, tweet):
         return self.model.infer_vector(tweet.words)
 
     def train_vector_by_index(self, tweet):
         return self.model[SimpleDoc2Vec._train_item_tag(self._tweet_to_index(tweet))]
+
+    def get_features_number(self):
+        return self.features_number
 
     @staticmethod
     def _train_item_tag(i):

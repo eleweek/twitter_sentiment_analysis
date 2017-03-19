@@ -3,43 +3,80 @@ import models
 import datasets
 import inspect
 import logging
+import numpy
+from sklearn.neural_network import MLPClassifier
 
 logging.basicConfig(level=logging.INFO)
 
 
 def find_model_class_by_name(model_class_name):
-    model = None
+    model_class = None
     for name, obj in inspect.getmembers(models):
         if inspect.isclass(obj) and name == model_class_name or getattr(obj, "model_name", None) == model_class_name:
-            model = obj
+            model_class = obj
 
-    return model
-
-
-def train_features_model(args):
-    dataset_name = args[0]
-    model_class_name = args[1]
-    model_file_name = args[2]
-
-    model_class = find_model_class_by_name(model_class_name)
     if model_class is None:
         raise Exception("Unknown model name {}".format(model_class_name))
 
+    return model_class
+
+
+def load_dataset_by_name(dataset_name, dataset_dir):
     load_dataset_from_directory = getattr(datasets, "load_{}_from_directory".format(dataset_name))
     dataset_dir = "datasets/{}".format(dataset_name)
     if load_dataset_from_directory is None:
         raise Exception("Unknown dataset name {}".format(dataset_name))
 
-    model = model_class.create_from_argv(*args[3:])
-    dataset_train, dataset_test = load_dataset_from_directory(dataset_dir)
+    return load_dataset_from_directory(dataset_dir)
+
+
+def train_features_model(dataset_name, model_class_name, model_file_name, *args):
+    model_class = find_model_class_by_name(model_class_name)
+
+    model = model_class.create_from_argv(*args)
+    dataset_train, dataset_test = load_dataset_by_name(dataset_name, "datasets/{}".format(dataset_name))
 
     model.train(dataset_train)
     model.save(model_file_name)
 
 
+def convert_dataset_to_features(tweets, model):
+    arrays = numpy.zeros((len(tweets), model.get_features_number()))
+    labels = numpy.zeros(len(tweets))
+
+    for i, tweet in enumerate(tweets):
+        arrays[i] = model.get_features(tweet)
+        labels[i] = tweet.polarity
+
+    return arrays, labels
+
+
+def test_features_model(dataset_name, model_class_name, model_file_name, *args):
+    model_class = find_model_class_by_name(model_class_name)
+    model = model_class.load(model_file_name)
+
+    dataset_train, dataset_test = load_dataset_by_name(dataset_name, "datasets/{}".format(dataset_name))
+
+    datasets.print_dataset_stats(dataset_train, "{}:train".format(dataset_name))
+    datasets.print_dataset_stats(dataset_test, "{}:test".format(dataset_name))
+
+    train_arrays, train_labels = convert_dataset_to_features(dataset_train, model)
+    test_arrays, test_labels = convert_dataset_to_features(dataset_test, model)
+
+    logging.info("Starting fitting")
+    clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(150, 10), random_state=1)
+    clf.fit(train_arrays, train_labels)
+
+    logging.info("Done fitting")
+    print(clf.score(train_arrays, train_labels))
+    print(clf.score(test_arrays, test_labels))
+
+
 if __name__ == "__main__":
     action = sys.argv[1]
     if action == "train_features_model":
-        train_features_model(sys.argv[2:])
+        train_features_model(*sys.argv[2:])
+    elif action == "test_features_model":
+        test_features_model(*sys.argv[2:])
     else:
         raise Exception("Unknown action {}".format(action))
