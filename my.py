@@ -1,95 +1,12 @@
 import logging
-import csv
 import sys
 import random
-from collections import defaultdict
 
 import numpy
-from nltk.tokenize import wordpunct_tokenize
-from gensim.models.doc2vec import TaggedDocument
-from gensim.models import Doc2Vec
 from sklearn.neural_network import MLPClassifier
-
-from io import open
 
 FORMAT = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
-
-
-class Tweet(object):
-    def is_neutral(self):
-        return self.polarity == 0
-
-    def is_positive(self):
-        return self.polarity > 0
-
-    def is_negative(self):
-        return self.polarity < 0
-
-    def get_words(self):
-        # TODO: support for different tokenizers
-        return self.words
-
-
-class Sentiment140Tweet(Tweet):
-    def __init__(self, row):
-        self.original_text = row[-1]
-        self.text = row[-1]
-        self.polarity = (int(row[0]) - 2) / 2
-        assert self.polarity in (-1, 0, 1)
-        self.words = wordpunct_tokenize(self.text)
-
-
-class MokoronTweet(Tweet):
-    def __init__(self, text, polarity=None):
-        # TODO: replace with regex. Replace wider range of emoticons.
-        self.original_text = text
-        self.original_text = self.original_text.replace(':)', '').replace(':(', '').replace(':D', '').replace(')', '').replace('(', '')
-        self.polarity = polarity
-        assert self.polarity in (-1, 0, 1, None)
-        self.words = wordpunct_tokenize(self.original_text)
-
-    @classmethod
-    def from_string(self, s):
-        return MokoronTweet(s)
-
-    @classmethod
-    def from_csv_row(self, row):
-        # TODO: replace with regex. Replace wider range of emoticons.
-        return MokoronTweet(row[3], int(row[4]))
-
-
-def load_and_shuffle_mokoron_dataset(positive_filename, negative_filename, unrated_filename=None):
-    parsed_dataset = []
-    for filename in (positive_filename, negative_filename):
-        with open(filename) as csvfile:
-            reader = csv.reader((line.replace('\0', '') for line in csvfile), delimiter=';')
-            num = 1
-            for row in reader:
-                # print(num, row)
-                num += 1
-                parsed_dataset.append(MokoronTweet.from_csv_row(row))
-                # print(parsed_dataset[-1].words, parsed_dataset[-1].polarity)
-
-    if unrated_filename:
-        with open(unrated_filename) as unrated_file:
-            print("Loading stuff")
-            for line in unrated_file:
-                parsed_dataset.append(MokoronTweet.from_string(line))
-
-    logging.info("Loaded dataset having {} tweets".format(len(parsed_dataset)))
-    # random.shuffle(parsed_dataset)
-    return parsed_dataset
-
-
-def load_sentiment140_dataset_part(filename):
-    parsed_file = []
-    with open(filename, encoding='latin1') as csvfile:
-        reader = csv.reader(csvfile)
-        for row in reader:
-            parsed_file.append(Sentiment140Tweet(row))
-
-    return parsed_file
 
 
 def sentiment140_train_and_test_classifier(train_file_csv, test_file_csv, model_file_name):
@@ -99,15 +16,6 @@ def sentiment140_train_and_test_classifier(train_file_csv, test_file_csv, model_
 
     doc2vec_model = Doc2Vec.load(model_file_name)
     _train_and_test_classifier(train_data, test_data, doc2vec_model)
-
-
-def print_dataset_stats(data):
-    hist = defaultdict(int)
-    for i in data:
-        hist[i.polarity] += 1
-
-    for polarity, count in sorted(hist.items()):
-        print(polarity, count)
 
 
 def _train_and_test_classifier(train_data, test_data, doc2vec_model):
