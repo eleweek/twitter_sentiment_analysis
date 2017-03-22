@@ -49,7 +49,10 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
             self.model.train(tagged_docs)
 
     def get_features(self, tweet):
-        return self.model.infer_vector(tweet.words)
+        features = self.model.infer_vector(tweet.words)
+        if not all(-2.0 <= f <= 2.0 for f in features):
+            logging.warning("Feature outside of -2.0 .. 2.0 range: {}".format(features))
+        return features
 
     def train_vector_by_index(self, tweet):
         return self.model[SimpleDoc2Vec._train_item_tag(self._tweet_to_index(tweet))]

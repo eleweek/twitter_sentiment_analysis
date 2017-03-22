@@ -2,6 +2,7 @@ from nltk.tokenize import wordpunct_tokenize
 import csv
 import os
 import logging
+import random
 from io import open
 from collections import defaultdict
 
@@ -58,7 +59,7 @@ class Sentiment140Tweet(Tweet):
 
 class MokoronTweet(Tweet):
     def __init__(self, text, polarity=None):
-        Tweet.__init__(text)
+        Tweet.__init__(self)
         # TODO: replace with regex. Replace wider range of emoticons.
         self.original_text = text
         self.original_text = self._strip_emoticons(self.original_text)
@@ -76,7 +77,7 @@ class MokoronTweet(Tweet):
         return MokoronTweet(row[3], int(row[4]))
 
 
-def load_mokoron_dataset_from_files(positive_filename, negative_filename, unrated_filename=None):
+def load_mokoron_from_files(positive_filename, negative_filename, unrated_filename=None):
     parsed_dataset = []
     for filename in (positive_filename, negative_filename):
         with open(filename) as csvfile:
@@ -88,7 +89,6 @@ def load_mokoron_dataset_from_files(positive_filename, negative_filename, unrate
 
     if unrated_filename:
         with open(unrated_filename) as unrated_file:
-            print("Loading stuff")
             for line in unrated_file:
                 parsed_dataset.append(MokoronTweet.from_string(line))
 
@@ -97,8 +97,27 @@ def load_mokoron_dataset_from_files(positive_filename, negative_filename, unrate
     return parsed_dataset, None
 
 
-def load_mokoron_dataset_from_directory(dir_path):
-    raise NotImplemented()
+def load_mokoron_from_directory(dir_path="datasets/mokoron", with_unrated=True):
+    return load_mokoron_from_files(
+        os.path.join(dir_path, "mokoron_positive.csv"),
+        os.path.join(dir_path, "mokoron_negative.csv"),
+        os.path.join(dir_path, "mokoron_unrated.txt")
+    )
+
+
+def load_mokoron_shuffle_split_from_directory(dir_path="datasets/mokoron", with_unrated=True):
+    dataset_train, dataset_test = load_mokoron_from_directory(dir_path)
+
+    assert dataset_test is None
+
+    rated_tweets = [tweet for tweet in dataset_train if tweet.polarity is not None]
+    random.shuffle(rated_tweets)
+    test_rated_tweets = rated_tweets[:1000]
+
+    new_train = list(set(dataset_train) - set(test_rated_tweets))
+    random.shuffle(new_train)
+
+    return new_train, test_rated_tweets
 
 
 def load_sentiment140_dataset_part(filename):
@@ -139,5 +158,9 @@ def get_dataset_stats(data):
 def print_dataset_stats(data, dataset_name):
     stats = get_dataset_stats(data)
     print("Dataset stats: {}".format(dataset_name))
+    if None in stats:
+        print("{} -> {}".format(None, stats[None]))
+        del stats[None]
+    # None and ints are unorderable, so we have to manually delete None
     for polarity, count in sorted(stats.items()):
         print("{} -> {}".format(polarity, count))
