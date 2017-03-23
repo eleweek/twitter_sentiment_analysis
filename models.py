@@ -8,21 +8,33 @@ import fasttext
 
 
 class TweetToFeaturesModel(object):
-    pass
+    @staticmethod
+    def _check_features_range(features, l=-1.5, r=1.5):
+        if not all(l <= f <= r for f in features):
+            logging.warning("Feature outside of {} .. {} range: {}".format(l, r, features))
 
 
-class PretrainedFasttext(TweetToFeaturesModel):
+class Fasttext(TweetToFeaturesModel):
     model_name = "fasttext"
 
-    def __init__(self):
-        self.model = None
-
     @staticmethod
-    def load(filename):
-        instance = PretrainedFasttext()
-        instance.model = fasttext.load_model(filename)
+    def load(file_name):
+        instance = Fasttext()
+        instance.model = fasttext.load_model(file_name)
 
         return instance
+
+    def train(self, train_data):
+        assert NotImplementedError("Fasttext currently supports only pre-trained models. You can find them here: "
+                                   "https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md")
+
+    def get_features(self, tweet):
+        features = self.model[' '.join(tweet.words)]
+        self._check_features_range(features, -100, 100)
+        return features
+
+    def get_features_number(self):
+        return 300  # since only pre-trained models are supported
 
 
 class SimpleDoc2Vec(TweetToFeaturesModel):
@@ -66,8 +78,7 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
 
     def get_features(self, tweet):
         features = self.model.infer_vector(tweet.words)
-        if not all(-2.0 <= f <= 2.0 for f in features):
-            logging.warning("Feature outside of -2.0 .. 2.0 range: {}".format(features))
+        self._check_features_range(features)
         return features
 
     def train_vector_by_index(self, tweet):
@@ -79,7 +90,3 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
     @staticmethod
     def _train_item_tag(i):
         return "TRAIN_ITEM_{}".format(i)
-
-
-class Fasttext(TweetToFeaturesModel):
-    pass
