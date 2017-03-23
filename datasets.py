@@ -61,7 +61,6 @@ class MokoronTweet(Tweet):
     def __init__(self, text, polarity=None):
         Tweet.__init__(self)
         # TODO: replace with regex. Replace wider range of emoticons.
-        self.original_text = text
         self.original_text = self._strip_emoticons(self.original_text)
         self.polarity = polarity
         assert self.polarity in (-1, 0, 1, None)
@@ -77,24 +76,32 @@ class MokoronTweet(Tweet):
         return MokoronTweet(row[3], int(row[4]))
 
 
+class MyTweet(Tweet):
+    def __init__(self, text, polarity):
+        Tweet.__init__(self)
+        self.original_text = self._strip_emoticons(text)
+
+        self.polarity = polarity
+        assert self.polarity in (-1, 0, 1, None)
+        self.words = wordpunct_tokenize(self.original_text)
+
+
 def load_mokoron_from_files(positive_filename, negative_filename, unrated_filename=None):
-    parsed_dataset = []
+    parsed_tweets = []
     for filename in (positive_filename, negative_filename):
         with open(filename) as csvfile:
             reader = csv.reader((line.replace('\0', '') for line in csvfile), delimiter=';')
-            num = 1
             for row in reader:
-                num += 1
-                parsed_dataset.append(MokoronTweet.from_csv_row(row))
+                parsed_tweets.append(MokoronTweet.from_csv_row(row))
 
     if unrated_filename:
         with open(unrated_filename) as unrated_file:
             for line in unrated_file:
-                parsed_dataset.append(MokoronTweet.from_string(line))
+                parsed_tweets.append(MokoronTweet.from_string(line))
 
-    logging.info("Loaded dataset having {} tweets".format(len(parsed_dataset)))
-    # random.shuffle(parsed_dataset)
-    return parsed_dataset, None
+    logging.info("Loaded dataset having {} tweets".format(len(parsed_tweets)))
+    # random.shuffle(parsed_tweets)
+    return parsed_tweets, None
 
 
 def load_mokoron_from_directory(dir_path="datasets/mokoron", with_unrated=True):
@@ -145,6 +152,36 @@ def load_sentiment140_from_directory(dir_path="datasets/sentiment140"):
     test_file_path = os.path.join(dir_path, test_file_name)
 
     return load_sentiment140_dataset_from_files(train_file_path, test_file_path)
+
+
+def load_my_from_files(positive_filename, negative_filename):
+    parsed_tweets = []
+    for filename, polarity in ((positive_filename, 1), (negative_filename, -1)):
+        with open(filename) as csvfile:
+            reader = csv.reader(csvfile, delimiter=';')
+            for row in reader:
+                parsed_tweets.append(MyTweet(row[4], polarity))
+
+    logging.info("Loaded dataset having {} tweets".format(len(parsed_tweets)))
+    return parsed_tweets
+
+
+def load_my_from_directory(dir_path="datasets/my_test1"):
+    positive_file = "positive_my_test1.csv"
+    negative_file = "negative_my_test1.csv"
+
+    positive_file_path = os.path.join(dir_path, positive_file)
+    negative_file_path = os.path.join(dir_path, negative_file)
+
+    tweets = load_my_from_files(positive_file_path, negative_file_path)
+
+    random.shuffle(tweets)
+
+    test_size = 1000
+    dataset_train = tweets[test_size:]
+    dataset_test = tweets[:test_size]
+
+    return dataset_train, dataset_test
 
 
 def get_dataset_stats(data):

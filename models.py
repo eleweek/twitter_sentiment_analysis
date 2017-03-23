@@ -4,9 +4,25 @@ import random
 from gensim.models.doc2vec import TaggedDocument
 from gensim.models import Doc2Vec
 
+import fasttext
+
 
 class TweetToFeaturesModel(object):
     pass
+
+
+class PretrainedFasttext(TweetToFeaturesModel):
+    model_name = "fasttext"
+
+    def __init__(self):
+        self.model = None
+
+    @staticmethod
+    def load(filename):
+        instance = PretrainedFasttext()
+        instance.model = fasttext.load_model(filename)
+
+        return instance
 
 
 class SimpleDoc2Vec(TweetToFeaturesModel):

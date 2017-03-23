@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.neural_network import MLPClassifier
 
 FORMAT = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
-logging.basicConfig(level=logging.DEBUG, format=FORMAT)
+logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 
 def find_model_class_by_name(model_class_name):
