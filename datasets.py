@@ -20,7 +20,7 @@ class Tweet(object):
         return hash((self.author, self.id, self.original_text))
 
     def __eq__(self, other):
-        return self.author == other.author and self.id == other.id and self.words == other.words
+        return self.author == other.author and self.id == other.id and self.original_text == other.original_text
 
     def is_neutral(self):
         return self.polarity == 0
@@ -31,12 +31,15 @@ class Tweet(object):
     def is_negative(self):
         return self.polarity < 0
 
+    def get_text(self):
+        try:
+            return self.text
+        except:
+            return self.original_text
+
     def get_words(self):
         # TODO: support for different tokenizers
-        return self.words
-
-    def get_text(self):
-        return self.text
+        return wordpunct_tokenize(self.original_text)
 
     @staticmethod
     def _strip_emoticons(text):
@@ -83,7 +86,6 @@ class MyTweet(Tweet):
 
         self.polarity = polarity
         assert self.polarity in (-1, 0, 1, None)
-        self.words = wordpunct_tokenize(self.original_text)
 
 
 def load_mokoron_from_files(positive_filename, negative_filename, unrated_filename=None):

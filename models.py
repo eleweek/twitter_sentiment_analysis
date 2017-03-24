@@ -37,7 +37,7 @@ class Fasttext(TweetToFeaturesModel):
                                    "https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md")
 
     def get_features(self, tweet):
-        features = self.model[' '.join(tweet.words)]
+        features = self.model[tweet.get_text()]
         self._check_features_range(features, -100, 100)
         return features
 
@@ -74,7 +74,7 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
 
         tagged_docs = []
         for index, tweet in enumerate(train_data):
-            tagged_docs.append(TaggedDocument(tweet.words, [self._train_item_tag(index)]))
+            tagged_docs.append(TaggedDocument(tweet.get_words(), [self._train_item_tag(index)]))
             self._tweet_to_index[tweet] = index
 
         self.model.build_vocab(tagged_docs)
@@ -85,7 +85,7 @@ class SimpleDoc2Vec(TweetToFeaturesModel):
             self.model.train(tagged_docs)
 
     def get_features(self, tweet):
-        features = self.model.infer_vector(tweet.words)
+        features = self.model.infer_vector(tweet.get_words())
         self._check_features_range(features)
         return features
 
@@ -160,7 +160,7 @@ class SimpleUnigramModel(TweetToFeaturesModel):
 
     def get_features(self, tweet):
         features = [0] * self.get_features_number()
-        for word in tweet.words:
+        for word in tweet.get_words():
             idx = self.lexicon.word_pos(word)
             features[idx] = 1
 
