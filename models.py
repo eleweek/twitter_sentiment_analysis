@@ -12,7 +12,7 @@ import fasttext
 
 class TweetToFeaturesModel(object):
     @staticmethod
-    def _check_features_range(features, l=-1.5, r=1.5):
+    def _check_features_range(features, l=-2.5, r=2.5):
         if not all(l <= f <= r for f in features):
             logging.warning("Feature outside of {} .. {} range: {}".format(l, r, features))
 
