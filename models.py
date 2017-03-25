@@ -110,14 +110,15 @@ class RussianSentimentLexicon(object):
         word_to_prob = {}
         with open(filename) as f:
             for line in f:
-                m = re.match('(\w+)\t([0-9.]+)')
+                m = re.match('(\w+)\t([0-9.]+)', line)
                 if m:
                     word = m.group(1)
                     probability = float(m.group(2))
                     word_to_prob[word] = probability
 
         self._word_to_prob = OrderedDict()
-        for index, word in enumerate(sorted(word_to_prob.iterkeys())):
+        self._word_to_index = {}
+        for index, word in enumerate(sorted(word_to_prob.keys())):
             self._word_to_prob[word] = word_to_prob[word]
             self._word_to_index[word] = index
 
@@ -125,7 +126,7 @@ class RussianSentimentLexicon(object):
         return len(self._word_to_prob)
 
     def word_pos(self, word):
-        return self._word_to_index.get(word)
+        return self._word_to_index.get(word.upper())
 
     def words(self):
         return self._word_to_prob.keys()
@@ -162,6 +163,7 @@ class SimpleUnigramModel(TweetToFeaturesModel):
         features = [0] * self.get_features_number()
         for word in tweet.get_words():
             idx = self.lexicon.word_pos(word)
-            features[idx] = 1
+            if idx is not None:
+                features[idx] = 1
 
         return features
