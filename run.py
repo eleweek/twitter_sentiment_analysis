@@ -1,8 +1,12 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 import sys
 import models
 import datasets
 import inspect
 import logging
+import random
 import numpy as np
 from sklearn.neural_network import MLPClassifier
 
@@ -23,12 +27,24 @@ def find_model_class_by_name(model_class_name):
 
 
 def load_dataset_by_name(dataset_name):
+    # TODO: argparse rather than this hack-ish thing
+    if '/' in dataset_name:
+        dataset_name, dataset_train_share = dataset_name.split('/')
+        dataset_train_share = float(dataset_train_share)
+    else:
+        dataset_train_share = 1.0
+
     load_dataset_from_directory = getattr(datasets, "load_{}_from_directory".format(dataset_name))
     # dataset_dir = "datasets/{}".format(dataset_name)
     if load_dataset_from_directory is None:
         raise Exception("Unknown dataset name {}".format(dataset_name))
 
-    return load_dataset_from_directory()
+    dataset_train, dataset_test = load_dataset_from_directory()
+
+    if dataset_train_share < 1.0:
+        dataset_train = random.sample(dataset_train, int(len(dataset_train) * dataset_train_share))
+
+    return dataset_train, dataset_test
 
 
 def train_features_model(dataset_name, model_class_name, model_file_name, *args):
@@ -43,14 +59,19 @@ def train_features_model(dataset_name, model_class_name, model_file_name, *args)
 
 def convert_dataset_to_features(tweets, model):
     logging.debug("convert_dataset_to_features: number of features is {}".format(model.get_features_number()))
-    arrays = np.zeros((len(tweets), model.get_features_number()))
     labels = np.zeros(len(tweets))
 
     for i, tweet in enumerate(tweets):
-        arrays[i] = model.get_features(tweet)
-        # print(arrays[i])
-        assert tweet.polarity is not None and -1.0 <= tweet.polarity <= 1.0
         labels[i] = tweet.polarity
+        assert tweet.polarity is not None and -1.0 <= tweet.polarity <= 1.0
+
+    if hasattr(model, "batch_get_features"):
+        arrays = model.batch_get_features(tweets)
+        assert len(arrays) == len(tweets)
+    else:
+        arrays = np.zeros((len(tweets), model.get_features_number()))
+        for i, tweet in enumerate(tweets):
+            arrays[i] = model.get_features(tweet)
 
     return arrays, labels
 

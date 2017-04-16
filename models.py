@@ -1,3 +1,4 @@
+import sys
 import logging
 import random
 import re
@@ -9,6 +10,10 @@ from gensim.models import Doc2Vec
 
 import fasttext
 
+sys.path.append("cloned_dependencies/generating-reviews-discovering-sentiment")
+import encoder as unsupervised_sentiment_neuron_encoder
+sys.path.pop()
+
 
 class TweetToFeaturesModel(object):
     @staticmethod
@@ -19,7 +24,7 @@ class TweetToFeaturesModel(object):
 
 class Fasttext(TweetToFeaturesModel):
     """
-    Represents class for Facebook's fasttext models.
+    Class for Facebook's fasttext models.
     Pre-trained models can be found here:
     https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md
     """
@@ -43,6 +48,38 @@ class Fasttext(TweetToFeaturesModel):
 
     def get_features_number(self):
         return 300  # since only pre-trained models are supported
+
+
+class UnsupervisedSentimentNeuronModel(TweetToFeaturesModel):
+    """
+    Class representing model from OpenAI's "Learning to Generate Reviews and Discovering Sentiment":
+    https://blog.openai.com/unsupervised-sentiment-neuron/
+
+    Code with pretrained model should be put to cloned_dependencies/generating-reviews-discovering-sentiment
+    """
+    model_name = "unsupervised_sentiment_neuron"
+
+    def __init__(self):
+        self.model = unsupervised_sentiment_neuron_encoder.Model()
+
+    @staticmethod
+    def load(file_name):
+        return UnsupervisedSentimentNeuronModel()
+
+    def train(self, train_data):
+        assert NotImplementedError("Unsupervised Sentiment Neuron model doesn't support training, because they haven't released the necessary code (yet ?)")
+
+    def batch_get_features(self, tweets):
+        features = self.model.transform([tweet.get_text() for tweet in tweets])
+        return features
+
+    def get_features(self, tweet):
+        features = self.model.transform(tweet.get_text())
+        self._check_features_range(features, -100, 100)
+        return features
+
+    def get_features_number(self):
+        return 4096  # number of features in pre-trained model
 
 
 class SimpleDoc2Vec(TweetToFeaturesModel):
@@ -104,7 +141,7 @@ class RussianSentimentLexicon(object):
     """
     Represents a class for sentiment lexicon created in:
     [Chetviorkin I. I. , Loukachevitch N. V. Extraction of Russian Sentiment Lexicon for Product Meta-Domain
-     // In  Proceedings of COLING 2012: Technical Papers , pages 593–610]
+    // In  Proceedings of COLING 2012: Technical Papers , pages 593–610]
     """
     def __init__(self, filename):
         word_to_prob = {}
@@ -114,7 +151,7 @@ class RussianSentimentLexicon(object):
                 if m:
                     word = m.group(1)
                     probability = float(m.group(2))
-                    word_to_prob[word] = probability
+                    word_to_prob[word.upper()] = probability
 
         self._word_to_prob = OrderedDict()
         self._word_to_index = {}
@@ -135,7 +172,10 @@ class RussianSentimentLexicon(object):
         return self._word_to_prob.get(word.upper(), 0.0)
 
     def has_sentiment(self, word):
-        return self.sentiment_probability(self, word) > 0
+        return self.sentiment_probability(word) > 0
+
+    def __contains__(self, word):
+        return self.has_sentiment(word)
 
 
 class SimpleUnigramModel(TweetToFeaturesModel):

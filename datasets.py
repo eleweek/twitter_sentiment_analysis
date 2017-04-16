@@ -22,6 +22,9 @@ class Tweet(object):
     def __eq__(self, other):
         return self.author == other.author and self.id == other.id and self.original_text == other.original_text
 
+    def is_sentiment_unknown(self):
+        return self.polarity is None
+
     def is_neutral(self):
         return self.polarity == 0
 
