@@ -159,7 +159,7 @@ def load_sentiment140_from_directory(dir_path="datasets/sentiment140"):
     return load_sentiment140_dataset_from_files(train_file_path, test_file_path)
 
 
-def load_my_from_files(positive_filename, negative_filename):
+def load_my_train_from_files(positive_filename, negative_filename):
     parsed_tweets = []
     for filename, polarity in ((positive_filename, 1), (negative_filename, -1)):
         with open(filename) as csvfile:
@@ -171,20 +171,47 @@ def load_my_from_files(positive_filename, negative_filename):
     return parsed_tweets
 
 
-def load_my_from_directory(dir_path="datasets/my_test1"):
+def load_my_test_from_file(test_filename):
+    parsed_tweets = []
+    with open(test_filename) as csvfile:
+        reader = csv.reader(csvfile, delimiter=';')
+        for row in reader:
+            parsed_tweets.append(MyTweet(row[6], int(row[1])))
+
+    return parsed_tweets
+
+
+def load_my_unrated_from_directory(dir_path="datasets/my_test1"):
     positive_file = "positive_my_test1.csv"
     negative_file = "negative_my_test1.csv"
 
     positive_file_path = os.path.join(dir_path, positive_file)
     negative_file_path = os.path.join(dir_path, negative_file)
 
-    tweets = load_my_from_files(positive_file_path, negative_file_path)
+    tweets = load_my_train_from_files(positive_file_path, negative_file_path)
 
     random.shuffle(tweets)
 
     test_size = 1000
     dataset_train = tweets[test_size:]
     dataset_test = tweets[:test_size]
+
+    return dataset_train, dataset_test
+
+
+def load_my_rated_from_directory(dir_path="datasets/my_test1"):
+    positive_file = "positive_my_test1.csv"
+    negative_file = "negative_my_test1.csv"
+    test_file = "test_dataset.csv"
+
+    positive_file_path = os.path.join(dir_path, positive_file)
+    negative_file_path = os.path.join(dir_path, negative_file)
+    test_file_path = os.path.join(dir_path, test_file)
+
+    dataset_test = load_my_test_from_file(test_file_path)
+    dataset_train = load_my_train_from_files(positive_file_path, negative_file_path)
+
+    random.shuffle(dataset_train)
 
     return dataset_train, dataset_test
 
