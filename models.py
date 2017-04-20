@@ -2,6 +2,8 @@ import sys
 import logging
 import random
 import re
+import os
+import dill
 
 from collections import OrderedDict
 
@@ -9,6 +11,8 @@ from gensim.models.doc2vec import TaggedDocument
 from gensim.models import Doc2Vec
 
 import fasttext
+
+from datasets import TweetSentiment
 
 sys.path.append("cloned_dependencies/generating-reviews-discovering-sentiment")
 import encoder as unsupervised_sentiment_neuron_encoder
@@ -42,7 +46,7 @@ class Fasttext(TweetToFeaturesModel):
                                    "https://github.com/facebookresearch/fastText/blob/master/pretrained-vectors.md")
 
     def get_features(self, tweet):
-        features = self.model[tweet.get_text()]
+        features = self.model.predict(tweet.get_text())
         self._check_features_range(features, -100, 100)
         return features
 
@@ -50,7 +54,67 @@ class Fasttext(TweetToFeaturesModel):
         return 300  # since only pre-trained models are supported
 
 
-class UnsupervisedSentimentNeuronModel(TweetToFeaturesModel):
+class TweetSentimentModel(object):
+    """
+    Full model that accepts a Tweet instance and returns a sentiment
+    """
+
+    NEUTRAL_THRESHOLD = 0.33
+
+    @staticmethod
+    def load(file_prefix):
+        with open(file_prefix) as f:
+            instance = dill.load(f)
+            assert isinstance(instance, TweetSentimentModel)
+            return instance
+
+    def save(self, file_prefix):
+        dirname = os.path.dirname(file_prefix)
+        os.makedirs(dirname, exist_ok=True)
+        with open(file_prefix, "wb") as f:
+            dill.dump(self, f)
+
+    def predict_sentiment_real(self, tweet):
+        raise NotImplemented()
+
+    def predict_sentiment_enum(self, tweet):
+        real_value_of_sentiment = self.predict_sentiment_real(tweet)
+        return TweetSentiment.from_real_value(real_value_of_sentiment)
+
+    def is_positive(self, tweet):
+        return self.get_sentiment(tweet) > self.NEUTRAL_THRESHOLD
+
+    def is_negative(self, tweet):
+        return self.get_sentiment(tweet) < -self.NEUTRAL_THRESHOLD
+
+    def is_neutral(self, tweet):
+        return not self.is_positive() and not self.is_negative()
+
+    def train(self, tweets):
+        raise NotImplemented()
+
+    def test(self, tweets, without_neutral=True):
+        """
+        Tests model on a corpus of tweets.
+            - without_neutral parameter removes neutral tweets from testing
+            - returns accuracy
+        """
+        correct = 0
+        total = 0
+        for tweet in tweets:
+            assert tweet.polarity is not None
+            if tweet.is_neutral() and without_neutral:
+                continue
+
+            if tweet.polarity == self.predict_sentiment_enum(tweet):
+                correct += 1
+
+            total += 1
+
+        return correct / total
+
+
+class UnsupervisedSentimentNeuronEncoder(TweetToFeaturesModel):
     """
     Class representing model from OpenAI's "Learning to Generate Reviews and Discovering Sentiment":
     https://blog.openai.com/unsupervised-sentiment-neuron/
@@ -64,7 +128,7 @@ class UnsupervisedSentimentNeuronModel(TweetToFeaturesModel):
 
     @staticmethod
     def load(file_name):
-        return UnsupervisedSentimentNeuronModel()
+        return UnsupervisedSentimentNeuronEncoder()
 
     def train(self, train_data):
         assert NotImplementedError("Unsupervised Sentiment Neuron model doesn't support training, because they haven't released the necessary code (yet ?)")

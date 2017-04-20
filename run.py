@@ -97,7 +97,8 @@ def test_features_model(dataset_name, model_class_name, model_file_name, *args):
     test_arrays, test_labels = convert_dataset_to_features(dataset_test, model)
 
     logging.info("Starting fitting")
-    clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(150, 10), random_state=1)
+    # clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(150, 10), random_state=1)
+    clf = MLPClassifier(solver='lbfgs', alpha=1e-5, hidden_layer_sizes=(30, ), random_state=1)
     clf.fit(train_arrays, train_labels)
 
     logging.info("Done fitting")

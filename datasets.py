@@ -3,6 +3,7 @@ import csv
 import os
 import logging
 import random
+from enum import IntEnum
 from io import open
 from collections import defaultdict
 
@@ -10,11 +11,30 @@ from collections import defaultdict
 positive_emoticons_list = [":)", ":D", ")"]
 negative_emoticons_list = [":(", ":C", "("]
 
+TWEET_SENTIMENT_NEUTRAL_RANGE = (-0.33, 0.33)
+
+
+class TweetSentiment(IntEnum):
+    NEGATIVE = -1
+    NEUTRAL = 0
+    POSITIVE = 1
+
+    @staticmethod
+    def from_real_value(value):
+        neutral_low, neutral_high = TWEET_SENTIMENT_NEUTRAL_RANGE
+        if value > neutral_high:
+            return TweetSentiment.POSITIVE
+
+        if value < neutral_low:
+            return TweetSentiment.NEGATIVE
+
+        return TweetSentiment.NEUTRAL
+
 
 class Tweet(object):
-    def __init__(self, author=None):
-        self.author = author
-        self.id = None
+    def __init__(self, text, polarity):
+        self.text = text
+        self.polarity = TweetSentiment(polarity) if polarity is not None else None
 
     def __hash__(self):
         return hash((self.author, self.id, self.original_text))
@@ -55,26 +75,24 @@ class Tweet(object):
 
 class Sentiment140Tweet(Tweet):
     def __init__(self, row):
-        Tweet.__init__(self)
-        self.original_text = row[-1]
-        self.text = row[-1]
-        self.polarity = (int(row[0]) - 2) / 2
-        assert self.polarity in (-1, 0, 1)
-        self.words = wordpunct_tokenize(self.text)
+        text = row[-1]._strip_emoticons()
+        polarity = (int(row[0]) - 2) / 2
+        assert polarity in (-1, 0, 1)
+
+        Tweet.__init__(self, text, polarity)
 
 
 class MokoronTweet(Tweet):
-    def __init__(self, text, polarity=None):
-        Tweet.__init__(self)
-        # TODO: replace with regex. Replace wider range of emoticons.
-        self.original_text = self._strip_emoticons(self.original_text)
-        self.polarity = polarity
-        assert self.polarity in (-1, 0, 1, None)
+    def __init__(self, text, polarity):
+        text = self._strip_emoticons(text)
+        assert polarity in (-1, 0, 1, None)
+
+        Tweet.__init__(self, text, polarity)
         self.words = wordpunct_tokenize(self.original_text)
 
     @classmethod
     def from_string(self, s):
-        return MokoronTweet(s)
+        return MokoronTweet(s, None)
 
     @classmethod
     def from_csv_row(self, row):
@@ -84,11 +102,9 @@ class MokoronTweet(Tweet):
 
 class MyTweet(Tweet):
     def __init__(self, text, polarity):
-        Tweet.__init__(self)
-        self.original_text = self._strip_emoticons(text)
-
-        self.polarity = polarity
-        assert self.polarity in (-1, 0, 1, None)
+        assert polarity in (-1, 0, 1, None)
+        text = self._strip_emoticons(text)
+        Tweet.__init__(self, text, polarity)
 
 
 def load_mokoron_from_files(positive_filename, negative_filename, unrated_filename=None):
@@ -227,9 +243,11 @@ def get_dataset_stats(data):
 def print_dataset_stats(data, dataset_name):
     stats = get_dataset_stats(data)
     print("Dataset stats: {}".format(dataset_name))
+
+    # None and ints are unorderable, so we have to manually delete None
     if None in stats:
         print("{} -> {}".format(None, stats[None]))
         del stats[None]
-    # None and ints are unorderable, so we have to manually delete None
+
     for polarity, count in sorted(stats.items()):
         print("{} -> {}".format(polarity, count))
