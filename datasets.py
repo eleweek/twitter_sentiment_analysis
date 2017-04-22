@@ -20,7 +20,10 @@ class TweetSentiment(IntEnum):
     POSITIVE = 1
 
     @staticmethod
-    def from_real_value(value):
+    def from_real_value(value, without_neutral=True):
+        if without_neutral:
+            return TweetSentiment.NEGATIVE if value <= 0 else TweetSentiment.POSITIVE
+
         neutral_low, neutral_high = TWEET_SENTIMENT_NEUTRAL_RANGE
         if value > neutral_high:
             return TweetSentiment.POSITIVE

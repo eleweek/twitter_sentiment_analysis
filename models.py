@@ -12,11 +12,16 @@ from gensim.models import Doc2Vec
 
 import fasttext
 
-from datasets import TweetSentiment
+import keras
+import keras.preprocessing
+import keras.preprocessing.text
+import keras.preprocessing.sequence
 
-sys.path.append("cloned_dependencies/generating-reviews-discovering-sentiment")
-import encoder as unsupervised_sentiment_neuron_encoder
-sys.path.pop()
+from datasets import TweetSentiment, Tweet
+
+# sys.path.append("cloned_dependencies/generating-reviews-discovering-sentiment")
+# import encoder as unsupervised_sentiment_neuron_encoder
+# sys.path.pop()
 
 
 class TweetToFeaturesModel(object):
@@ -60,26 +65,30 @@ class TweetSentimentModel(object):
     """
 
     NEUTRAL_THRESHOLD = 0.33
-
     @staticmethod
-    def load(file_prefix):
-        with open(file_prefix) as f:
-            instance = dill.load(f)
-            assert isinstance(instance, TweetSentimentModel)
-            return instance
+    def _make_dirs_for_files(file_prefix):
+        dirname = os.path.dirname(file_prefix)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
 
     def save(self, file_prefix):
-        dirname = os.path.dirname(file_prefix)
-        os.makedirs(dirname, exist_ok=True)
+        self._make_dirs_for_files(file_prefix)
         with open(file_prefix, "wb") as f:
             dill.dump(self, f)
+
+    @classmethod
+    def load(cls, file_prefix):
+        with open(file_prefix) as f:
+            instance = dill.load(f)
+            assert isinstance(instance, cls)
+            return instance
 
     def predict_sentiment_real(self, tweet):
         raise NotImplemented()
 
-    def predict_sentiment_enum(self, tweet):
+    def predict_sentiment_enum(self, tweet, without_neutral=True):
         real_value_of_sentiment = self.predict_sentiment_real(tweet)
-        return TweetSentiment.from_real_value(real_value_of_sentiment)
+        return TweetSentiment.from_real_value(real_value_of_sentiment, without_neutral=without_neutral)
 
     def is_positive(self, tweet):
         return self.get_sentiment(tweet) > self.NEUTRAL_THRESHOLD
@@ -110,8 +119,111 @@ class TweetSentimentModel(object):
                 correct += 1
 
             total += 1
-
+        
+        print("correct = ", correct, "total = ", total)
         return correct / total
+
+
+class KerasTweetSentimentModel(TweetSentimentModel):
+    def __init__(self, max_words=200000, max_tweet_length=25, embedding_vector_length=300, num_epochs=1, batch_size=128):
+        TweetSentimentModel.__init__(self)
+
+        self.tokenizer = keras.preprocessing.text.Tokenizer(num_words=max_words)
+        self.max_words = max_words
+        self.max_tweet_length = max_tweet_length
+        self.embedding_vector_length = embedding_vector_length
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size
+
+    def save(self, file_prefix):
+        self._make_dirs_for_files(file_prefix)
+        tokenizer_filename = file_prefix + ".tokenizer"
+        model_params_filename = file_prefix + ".params"
+        keras_model_file_name = file_prefix + ".h5"
+
+        with open(tokenizer_filename, "wb") as tf:
+            dill.dump(self.tokenizer, tf)
+
+        with open(model_params_filename, "wb") as mpf:
+            dill.dump([self.max_words, self.max_tweet_length, self.embedding_vector_length, self.num_epochs, self.batch_size], mpf)
+
+        self.model.save(keras_model_file_name)
+
+
+    @classmethod
+    def load(cls, file_prefix):
+        tokenizer_filename = file_prefix + ".tokenizer"
+        model_params_filename = file_prefix + ".params"
+        keras_model_file_name = file_prefix + ".h5"
+
+        instance = cls()
+
+        with open(tokenizer_filename, "rb") as tf:
+            instance.tokenizer = dill.load(tf)
+
+        with open(model_params_filename, "rb") as mpf:
+            instance.max_words, instance.max_tweet_length, instance.embedding_vector_length, instance.num_epochs, instance.batch_size = dill.load(mpf)
+
+        keras.models.load_model(keras_model_file_name)
+
+        return instance
+
+    def _train_tokenizer(self, tweets):
+        self.tokenizer.fit_on_texts(t.get_text() for t in tweets)
+
+    def _tweets_to_xy_tensors(self, tweets):
+        texts, y = zip(*[
+            (t.get_text(), int(t.is_positive())) for t in tweets
+        ])
+        X = self.tokenizer.texts_to_sequences(texts)
+        X = keras.preprocessing.sequence.pad_sequences(X, maxlen=self.max_tweet_length)
+
+        return X, list(y)
+
+    def _tweets_to_x_tensor(self, tweets):
+        X = self.tokenizer.texts_to_sequences(t.get_text() for t in tweets)
+        X = keras.preprocessing.sequence.pad_sequences(X, maxlen=self.max_tweet_length)
+
+        return X
+
+    def train(self, tweets, num_epochs=None, batch_size=None):
+        num_epochs = num_epochs or self.num_epochs
+        batch_size = batch_size or self.batch_size
+
+        self._train_tokenizer(tweets)
+        X_train, y_train = self._tweets_to_xy_tensors(tweets)
+        self.model.fit(X_train, y_train, epochs=self.num_epochs, batch_size=self.batch_size)
+
+    def predict_sentiment_real(self, tweets):
+        if isinstance(tweets, Tweet):
+            Xs = self._tweets_to_x_tensor([tweets])
+            ys = self.model.predict(Xs)
+            ys = self.model.predict(Xs)
+            return 2 * ys[0][0] - 1
+        else:
+            Xs = _tweets_to_x_tensor(tweets)
+            ys = self.model.predict(Xs)
+            return [2 * y[0] - 1 for y in ys]
+
+
+class KerasCNNModel(KerasTweetSentimentModel):
+    def __init__(self, **kwargs):
+        KerasTweetSentimentModel.__init__(self, **kwargs)
+
+        model = keras.models.Sequential()
+        model.add(keras.layers.embeddings.Embedding(self.max_words, self.embedding_vector_length, input_length=self.max_tweet_length))
+
+        model.add(keras.layers.Convolution1D(128, 3, padding='same'))
+        model.add(keras.layers.Convolution1D(64, 3, padding='same'))
+        model.add(keras.layers.Convolution1D(32, 3, padding='same'))
+        model.add(keras.layers.Flatten())
+        model.add(keras.layers.Dropout(0.2))
+        model.add(keras.layers.Dense(180, activation='sigmoid'))
+        model.add(keras.layers.Dropout(0.2))
+        model.add(keras.layers.Dense(1, activation='sigmoid'))
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        self.model = model
 
 
 class UnsupervisedSentimentNeuronEncoder(TweetToFeaturesModel):
