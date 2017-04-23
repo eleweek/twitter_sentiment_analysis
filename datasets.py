@@ -1,12 +1,15 @@
-from nltk.tokenize import wordpunct_tokenize
 import csv
+import sys
 import os
 import logging
 import random
+
+from nltk.tokenize import wordpunct_tokenize
 from enum import IntEnum
 from io import open
 from collections import defaultdict
 
+_thismodule = sys.modules[__name__]
 
 positive_emoticons_list = [":)", ":D", ")"]
 negative_emoticons_list = [":(", ":C", "("]
@@ -65,7 +68,7 @@ class Tweet(object):
 
     def get_words(self):
         # TODO: support for different tokenizers
-        return wordpunct_tokenize(self.original_text)
+        return wordpunct_tokenize(self.get_text())
 
     @staticmethod
     def _strip_emoticons(text):
@@ -78,7 +81,7 @@ class Tweet(object):
 
 class Sentiment140Tweet(Tweet):
     def __init__(self, row):
-        text = row[-1]._strip_emoticons()
+        text = self._strip_emoticons(row[-1])
         polarity = (int(row[0]) - 2) / 2
         assert polarity in (-1, 0, 1)
 
@@ -108,6 +111,27 @@ class MyTweet(Tweet):
         assert polarity in (-1, 0, 1, None)
         text = self._strip_emoticons(text)
         Tweet.__init__(self, text, polarity)
+
+
+def load_dataset_by_name(dataset_name):
+    # TODO: argparse rather than this hack-ish thing
+    if '/' in dataset_name:
+        dataset_name, dataset_train_share = dataset_name.split('/')
+        dataset_train_share = float(dataset_train_share)
+    else:
+        dataset_train_share = 1.0
+
+    load_dataset_from_directory = getattr(_thismodule, "load_{}_from_directory".format(dataset_name))
+    # dataset_dir = "datasets/{}".format(dataset_name)
+    if load_dataset_from_directory is None:
+        raise Exception("Unknown dataset name {}".format(dataset_name))
+
+    dataset_train, dataset_test = load_dataset_from_directory()
+
+    if dataset_train_share < 1.0:
+        dataset_train = random.sample(dataset_train, int(len(dataset_train) * dataset_train_share))
+
+    return dataset_train, dataset_test
 
 
 def load_mokoron_from_files(positive_filename, negative_filename, unrated_filename=None):

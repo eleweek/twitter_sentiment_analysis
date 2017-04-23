@@ -14,39 +14,6 @@ FORMAT = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 
-def find_model_class_by_name(model_class_name):
-    model_class = None
-    for name, obj in inspect.getmembers(models):
-        if inspect.isclass(obj) and name == model_class_name or getattr(obj, "model_name", None) == model_class_name:
-            model_class = obj
-
-    if model_class is None:
-        raise Exception("Unknown model name {}".format(model_class_name))
-
-    return model_class
-
-
-def load_dataset_by_name(dataset_name):
-    # TODO: argparse rather than this hack-ish thing
-    if '/' in dataset_name:
-        dataset_name, dataset_train_share = dataset_name.split('/')
-        dataset_train_share = float(dataset_train_share)
-    else:
-        dataset_train_share = 1.0
-
-    load_dataset_from_directory = getattr(datasets, "load_{}_from_directory".format(dataset_name))
-    # dataset_dir = "datasets/{}".format(dataset_name)
-    if load_dataset_from_directory is None:
-        raise Exception("Unknown dataset name {}".format(dataset_name))
-
-    dataset_train, dataset_test = load_dataset_from_directory()
-
-    if dataset_train_share < 1.0:
-        dataset_train = random.sample(dataset_train, int(len(dataset_train) * dataset_train_share))
-
-    return dataset_train, dataset_test
-
-
 def train_features_model(dataset_name, model_class_name, model_file_name, *args):
     model_class = find_model_class_by_name(model_class_name)
 
