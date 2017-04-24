@@ -8,6 +8,7 @@ from nltk.tokenize import wordpunct_tokenize
 from enum import IntEnum
 from io import open
 from collections import defaultdict
+from uuid import uuid4
 
 _thismodule = sys.modules[__name__]
 
@@ -38,15 +39,16 @@ class TweetSentiment(IntEnum):
 
 
 class Tweet(object):
-    def __init__(self, text, polarity):
+    def __init__(self, text, polarity=None, id=None):
+        self.id = id or uuid4()
         self.text = text
         self.polarity = TweetSentiment(polarity) if polarity is not None else None
 
     def __hash__(self):
-        return hash((self.author, self.id, self.original_text))
+        return hash((self.id, self.text))
 
     def __eq__(self, other):
-        return self.author == other.author and self.id == other.id and self.original_text == other.original_text
+        return self.id == other.id and self.text == other.text
 
     def is_sentiment_unknown(self):
         return self.polarity is None
@@ -114,7 +116,6 @@ class MyTweet(Tweet):
 
 
 def load_dataset_by_name(dataset_name):
-    # TODO: argparse rather than this hack-ish thing
     if '/' in dataset_name:
         dataset_name, dataset_train_share = dataset_name.split('/')
         dataset_train_share = float(dataset_train_share)
@@ -130,6 +131,8 @@ def load_dataset_by_name(dataset_name):
 
     if dataset_train_share < 1.0:
         dataset_train = random.sample(dataset_train, int(len(dataset_train) * dataset_train_share))
+    else:
+        random.shuffle(dataset_train)
 
     return dataset_train, dataset_test
 

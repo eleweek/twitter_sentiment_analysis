@@ -1,10 +1,10 @@
 import sys
 import logging
-import random
 import re
 import os
 import dill
 import inspect
+import itertools
 
 from collections import OrderedDict
 
@@ -30,9 +30,11 @@ _thismodule = sys.modules[__name__]
 # sys.path.pop()
 
 
-def chunks(l, n):
-    for i in range(0, len(l), n):
-        yield l[i:i + n]
+def grouper(iterable, n, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
+    args = [iter(iterable)] * n
+    return itertools.zip_longest(*args, fillvalue=fillvalue)
 
 
 def find_model_class_by_name(model_class_name):
@@ -57,12 +59,14 @@ class TweetToFeaturesModel(object):
         raise NotImplementedError()
 
     def batch_get_features(self, tweets, verbose=True):
-        progress = Progbar(target=len(tweets))
+        if verbose:
+            progress = Progbar(target=len(tweets))
 
         X = np.zeros((len(tweets),) + self.get_features_shape(), dtype=np.float32)
         for i, tweet in enumerate(tweets):
             X[i] = self.get_features(tweets[i])
-            progress.update(i)
+            if verbose:
+                progress.update(i)
 
         return X
 
@@ -223,7 +227,7 @@ class KerasFeaturesToSentimentModel(FeaturesToSentimentModel):
         else:
             single_instance = False
 
-        X = self.tweet_to_features.batch_get_features(tweets)
+        X = self.tweet_to_features.batch_get_features(tweets, verbose=False)
         ys = self.features_to_sentiment.predict(X)
 
         if single_instance:
@@ -232,18 +236,66 @@ class KerasFeaturesToSentimentModel(FeaturesToSentimentModel):
             return [2 * y[0] - 1 for y in ys]
 
     def _features_generator(self, tweets):
-        for i, chunk in enumerate(chunks(tweets, self.batch_size)):
-            X = self.tweet_to_features.batch_get_features(chunk)
+        for chunk in grouper(itertools.cycle(tweets), self.batch_size):
+            X = self.tweet_to_features.batch_get_features(chunk, verbose=False)
             y = [int(tweet.is_positive()) for tweet in chunk]
             yield X, y
 
     def train(self, tweets):
         self.features_to_sentiment.fit_generator(
             self._features_generator(tweets),
-            steps_per_epoch=(len(tweets) // self.batch_size),
+            steps_per_epoch=(len(tweets) // self.batch_size) - 1,
             epochs=self.num_epochs,
             verbose=1
         )
+
+
+class KerasLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
+    model_name = "lstm_features_to_sentiment"
+
+    def __init__(self, tweet_to_features, lstm_layer_sizes=[256, 32]):
+        model = keras.models.Sequential()
+
+        assert len(tweet_to_features.get_features_shape()) == 2, "Features shape {} isn't 2d".format(tweet_to_features.get_features_shape())
+
+        if len(lstm_layer_sizes) > 1:
+            model.add(keras.layers.LSTM(lstm_layer_sizes[0],
+                                        return_sequences=True,
+                                        dropout=0.2,
+                                        recurrent_dropout=0.2,
+                                        input_shape=tweet_to_features.get_features_shape()))
+
+            for size in lstm_layer_sizes[1:-1]:
+                model.add(keras.layers.LSTM(size,
+                                            return_sequences=True,
+                                            dropout=0.2,
+                                            recurrent_dropout=0.2))
+
+            model.add(keras.layers.LSTM(lstm_layer_sizes[-1], dropout=0.2, recurrent_dropout=0.2))
+        else:
+            model.add(keras.layers.LSTM(lstm_layer_sizes[0], dropout=0.2, recurrent_dropout=0.2, input_shape=tweet_to_features.get_features_shape()))
+        model.add(keras.layers.Dense(1, activation='sigmoid'))
+
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        KerasTweetSentimentModel.__init__(self, tweet_to_features, model)
+
+
+class KerasDenseFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
+    model_name = "dense_features_to_sentiment"
+
+    def __init__(self, tweet_to_features, dense_layer_sizes=[100, 1]):
+        model = keras.models.Sequential()
+
+        assert len(tweet_to_features.get_features_shape()) == 1, "Features shape {} isn't 1d".format(tweet_to_features.get_features_shape())
+
+        model.add(keras.layers.Dense(dense_layer_sizes[0], input_shape=tweet_to_features.get_features_shape()))
+        for size in dense_layer_sizes[1:]:
+            model.add(keras.layers.Dense(size))
+
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model)
 
 
 class KerasTweetSentimentModel(TweetSentimentModel):
@@ -349,6 +401,8 @@ class KerasCNNModel(KerasTweetSentimentModel):
 
 
 class KerasLSTMModel(KerasTweetSentimentModel):
+    model_name = "full_lstm"
+
     def __init__(self, lstm_layer_sizes=[128, 32], dropout=0.2, **kwargs):
         KerasTweetSentimentModel.__init__(self, **kwargs)
         model = keras.models.Sequential()
@@ -365,6 +419,8 @@ class KerasLSTMModel(KerasTweetSentimentModel):
 
 
 class KerasGRUModel(KerasTweetSentimentModel):
+    model_name = "full_gru"
+
     def __init__(self, gru_layer_sizes=[128, 32], **kwargs):
         KerasTweetSentimentModel.__init__(self, **kwargs)
         model = keras.models.Sequential()
@@ -430,14 +486,12 @@ class Doc2VecEmbedding(TweetToFeaturesModel):
         return Doc2VecEmbedding(*map(int, args))
 
     def __init__(self, epochs, min_count=1, window=10, size=100, sample=1e-5, negative=5, workers=12, *args, **kwargs):
-        self.model = Doc2Vec(min_count=1, window=10, size=100, sample=1e-5, negative=5, workers=12, *args, **kwargs)
+        self.model = Doc2Vec(iter=epochs, min_count=min_count, window=window, size=size, sample=sample, negative=negative, workers=workers, *args, **kwargs)
         self._epochs = epochs
         self._tweet_to_index = {}
-        self.features_number = size
 
     def train(self, train_data):
         logging.info("Training Doc2Vec model")
-        epochs = self._epochs
 
         tagged_docs = []
         for index, tweet in enumerate(train_data):
@@ -445,11 +499,7 @@ class Doc2VecEmbedding(TweetToFeaturesModel):
             self._tweet_to_index[tweet] = index
 
         self.model.build_vocab(tagged_docs)
-
-        for epoch in range(epochs):
-            logging.info('Training Doc2Vec: EPOCH: {}'.format(epoch))
-            random.shuffle(tagged_docs)
-            self.model.train(tagged_docs)
+        self.model.train(tagged_docs, epochs=self.model.iter, total_examples=len(tagged_docs))
 
     def get_features(self, tweet):
         features = self.model.infer_vector(tweet.get_words())
@@ -460,7 +510,10 @@ class Doc2VecEmbedding(TweetToFeaturesModel):
         return self.model[Doc2VecEmbedding._train_item_tag(self._tweet_to_index(tweet))]
 
     def get_features_number(self):
-        return self.features_number
+        return self.model.vector_size
+
+    def get_features_shape(self):
+        return (self.get_features_number(), )
 
     @staticmethod
     def _train_item_tag(i):
