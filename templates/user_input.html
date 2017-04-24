@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        {{ wtf.quick_form(form) }}
+    </div>
+
+    <br> <br>
+    {% if text %}
+    <div class="row">
+      <table class="table">
+        <div class="panel panel-default">
+          <div class="panel-heading"> lang = {{ lang }}; sentiment = {{ sentiment_real }}; sentiment_enum = {{ sentiment_enum }} </div>
+          <div class="panel-body">
+            {{ text }}
+          </div>
+        </div>
+      </table>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

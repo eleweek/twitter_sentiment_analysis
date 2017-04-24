@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block content %}
+<div class="container">
+  <div class="row">
+      {{ wtf.quick_form(form) }}
+  </div>
+  <br> <br>
+  {% if found_tweets %}
+    <div class="row">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Text</th>
+            <th>Language</th>
+            <th>Sentiment value</th>
+            <th>Sentiment enum</th>
+          </tr>
+        </thead>
+        </tbody>
+          {% for text, lang, sentiment_real, sentiment_enum in found_tweets %}
+            {% if sentiment_enum == 1 %}
+              {% set row_class = 'success' %}
+            {% elif sentiment_enum == -1 %}
+              {% set row_class = 'danger' %}
+            {% endif %}
+            <tr class={{row_class}}>
+              <td> {{ loop.index }} </td>
+              <td> {{ text }} </td>
+              <td> {{ lang }} </td>
+              <td> {{ sentiment_real }} </td>
+              <td> {{ sentiment_enum }} </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
