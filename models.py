@@ -55,6 +55,16 @@ class TweetToFeaturesModel(object):
         if not all(l <= f <= r for f in features):
             logging.warning("Feature outside of {} .. {} range: {}".format(l, r, features))
 
+    @classmethod
+    def load(cls, file_prefix):
+        raise NotImplementedError()
+
+    def save(self, file_prefix):
+        raise NotImplementedError()
+
+    def get_features(self, tweet):
+        raise NotImplementedError()
+
     def get_features_shape(self):
         raise NotImplementedError()
 
@@ -151,7 +161,7 @@ class TweetSentimentModel(object):
             return instance
 
     def predict_sentiment_real(self, tweet):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def predict_sentiment_enum(self, tweet, without_neutral=True):
         real_value_of_sentiment = self.predict_sentiment_real(tweet)
@@ -167,7 +177,7 @@ class TweetSentimentModel(object):
         return not self.is_positive() and not self.is_negative()
 
     def train(self, tweets):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def test(self, tweets, without_neutral=True):
         """
@@ -253,7 +263,7 @@ class KerasFeaturesToSentimentModel(FeaturesToSentimentModel):
 class KerasLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
     model_name = "lstm_features_to_sentiment"
 
-    def __init__(self, tweet_to_features, lstm_layer_sizes=[256, 32]):
+    def __init__(self, tweet_to_features, lstm_layer_sizes=[256, 32], **kwargs):
         model = keras.models.Sequential()
 
         assert len(tweet_to_features.get_features_shape()) == 2, "Features shape {} isn't 2d".format(tweet_to_features.get_features_shape())
@@ -278,13 +288,34 @@ class KerasLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-        KerasTweetSentimentModel.__init__(self, tweet_to_features, model)
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
+
+
+class KerasCLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
+    model_name = "clstm_features_to_sentiment"
+
+    def __init__(self, tweet_to_features, conv_layer_size=200, lstm_layer_size=150, **kwargs):
+        KerasTweetSentimentModel.__init__(self, **kwargs)
+        model = keras.models.Sequential()
+        model.add(keras.layers.Convolution1D(conv_layer_size,
+                  5,
+                  padding='valid',
+                  activation='relu',
+                  strides=1,
+                  input_shape=tweet_to_features.get_features_shape()))
+        model.add(keras.layers.MaxPooling1D(pool_size=4))
+        model.add(keras.layers.LSTM(lstm_layer_size))
+        model.add(keras.layers.Dense(1, activation='sigmoid'))
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        self.model = model
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
 
 
 class KerasDenseFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
     model_name = "dense_features_to_sentiment"
 
-    def __init__(self, tweet_to_features, dense_layer_sizes=[100, 1]):
+    def __init__(self, tweet_to_features, dense_layer_sizes=[100, 1], **kwargs):
         model = keras.models.Sequential()
 
         assert len(tweet_to_features.get_features_shape()) == 1, "Features shape {} isn't 1d".format(tweet_to_features.get_features_shape())
@@ -295,7 +326,7 @@ class KerasDenseFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model)
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
 
 
 class KerasTweetSentimentModel(TweetSentimentModel):
@@ -378,6 +409,25 @@ class KerasTweetSentimentModel(TweetSentimentModel):
             Xs = self._tweets_to_x_tensor(tweets)
             ys = self.model.predict(Xs)
             return [2 * y[0] - 1 for y in ys]
+
+
+class KerasCLSTModel(KerasTweetSentimentModel):
+    def __init__(self, conv_layer_size=200, lstm_layer_size=180, **kwargs):
+        KerasTweetSentimentModel.__init__(self, **kwargs)
+        model = keras.models.Sequential()
+        model.add(keras.layers.Embedding(self.max_words, self.embedding_vector_length, input_length=self.max_tweet_length))
+        model.add(keras.layers.Dropout(0.25))
+        model.add(keras.layers.Convolution1D(conv_layer_size,
+                  5,
+                  padding='valid',
+                  activation='relu',
+                  strides=1))
+        model.add(keras.layers.MaxPooling1D(pool_size=4))
+        model.add(keras.layers.LSTM(lstm_layer_size))
+        model.add(keras.layers.Dense(1, activation='sigmoid'))
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        self.model = model
 
 
 class KerasCNNModel(KerasTweetSentimentModel):

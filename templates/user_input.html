@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
 {% import "bootstrap/wtf.html" as wtf %}
+{% import "macros.html" as macros %}
 
 {% block content %}
 <div class="container">
@@ -9,17 +10,10 @@
     </div>
 
     <br> <br>
-    {% if text %}
-    <div class="row">
-      <table class="table">
-        <div class="panel panel-default">
-          <div class="panel-heading"> lang = {{ lang }}; sentiment = {{ sentiment_real }}; sentiment_enum = {{ sentiment_enum }} </div>
-          <div class="panel-body">
-            {{ text }}
-          </div>
-        </div>
-      </table>
-    </div>
+    {% if parsed_tweets %}
+      <div class="row">
+        {{ macros.render_tweet_table(parsed_tweets) }}
+      </div>
     {% endif %}
 </div>
 

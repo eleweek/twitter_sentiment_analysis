@@ -9,15 +9,16 @@ import langdetect
 
 import twitter_utils
 from datasets import Tweet
-from models import KerasLSTMModel
+from models import KerasLSTMModel, FasttextWordEmbedding, KerasLSTMFeaturesToSentimentModel
 
 
 def load_ru_model():
-    return KerasLSTMModel.load("trained_models/ru_lstm_full_01")
+    return KerasLSTMModel.load("trained_models/ru_lstm_full_10_larger")
 
 
 def load_en_model():
-    return KerasLSTMModel.load("trained_models/en_lstm_full_05")
+    fasttext = FasttextWordEmbedding.load("pretrained_models/wiki.en.bin")
+    return KerasLSTMFeaturesToSentimentModel.load(fasttext, "trained_models/fasttext_keras_7")
 
 
 twitter_api = twitter_utils.create_api()
@@ -33,7 +34,6 @@ def get_language_and_sentiment_values(text):
     lang = langdetect.detect(text)
     # if lang not in ["en", "ru"]:
     #    raise Exception("Unsupport language: {}".format(lang))
-
     wrapped_text = Tweet(text)
     if lang == "en":
         model = en_model
@@ -79,12 +79,16 @@ def search():
 @app.route('/user_input', methods=["GET", "POST"])
 def user_input():
     form = UserInputForm()
-    text = lang = sentiment_real = sentiment_enum = None
+    tuples = []
     if form.validate_on_submit():
-        text = form.text.data
-        lang, sentiment_real, sentiment_enum = get_language_and_sentiment_values(text)
+        texts = [line.strip() for line in form.text.data.split('\n')]
+        print(texts)
 
-    return render_template("user_input.html", form=form, text=text, lang=lang, sentiment_real=sentiment_real, sentiment_enum=sentiment_enum)
+        for text in texts:
+            tuples.append((text,) + get_language_and_sentiment_values(text))
+            print(tuples)
+
+    return render_template("user_input.html", form=form, parsed_tweets=tuples)
 
 
 if __name__ == "__main__":
