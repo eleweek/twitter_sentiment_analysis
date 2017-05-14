@@ -63,10 +63,7 @@ class Tweet(object):
         return self.polarity < 0
 
     def get_text(self):
-        try:
-            return self.text
-        except:
-            return self.original_text
+        return self.text
 
     def get_words(self):
         # TODO: support for different tokenizers
@@ -96,7 +93,6 @@ class MokoronTweet(Tweet):
         assert polarity in (-1, 0, 1, None)
 
         Tweet.__init__(self, text, polarity)
-        self.words = wordpunct_tokenize(self.original_text)
 
     @classmethod
     def from_string(self, s):
@@ -137,7 +133,7 @@ def load_dataset_by_name(dataset_name):
     return dataset_train, dataset_test
 
 
-def load_mokoron_from_files(positive_filename, negative_filename, unrated_filename=None):
+def load_mokoron_from_files(positive_filename, negative_filename, unlabeled_train_filename=None):
     parsed_tweets = []
     for filename in (positive_filename, negative_filename):
         with open(filename) as csvfile:
@@ -145,8 +141,8 @@ def load_mokoron_from_files(positive_filename, negative_filename, unrated_filena
             for row in reader:
                 parsed_tweets.append(MokoronTweet.from_csv_row(row))
 
-    if unrated_filename:
-        with open(unrated_filename) as unrated_file:
+    if unlabeled_train_filename:
+        with open(unlabeled_train_filename) as unrated_file:
             for line in unrated_file:
                 parsed_tweets.append(MokoronTweet.from_string(line))
 
@@ -155,16 +151,19 @@ def load_mokoron_from_files(positive_filename, negative_filename, unrated_filena
     return parsed_tweets, None
 
 
-def load_mokoron_from_directory(dir_path="datasets/mokoron", with_unrated=True):
-    return load_mokoron_from_files(
+def load_mokoron_from_directory(dir_path="datasets/mokoron", test_dir_path="datasets/my_test1", with_unlabeled_train=True):
+    dataset_train, _ = load_mokoron_from_files(
         os.path.join(dir_path, "mokoron_positive.csv"),
         os.path.join(dir_path, "mokoron_negative.csv"),
-        os.path.join(dir_path, "mokoron_unrated.txt")
+        os.path.join(dir_path, "mokoron_unrated.txt") if with_unlabeled_train else None
     )
+    dataset_test = load_my_test_from_file(os.path.join(test_dir_path, "test_dataset.csv"))
+
+    return dataset_train, dataset_test
 
 
-def load_mokoron_shuffle_split_from_directory(dir_path="datasets/mokoron", with_unrated=True):
-    dataset_train, dataset_test = load_mokoron_from_directory(dir_path)
+def load_mokoron_unrated_from_directory(dir_path="datasets/mokoron", with_unlabeled_train=True):
+    dataset_train, dataset_test = load_mokoron_from_directory(dir_path, with_unlabeled_train)
 
     assert dataset_test is None
 
@@ -260,6 +259,23 @@ def load_my_rated_from_directory(dir_path="datasets/my_test1"):
     random.shuffle(dataset_train)
 
     return dataset_train, dataset_test
+
+
+def load_my_eng_plus_sentiment140_from_directory(dir_path="datasets/my_eng_plus", sentiment140_dir_path="datasets/sentiment140"):
+    positive_file = "my_eng_positive_head.csv"
+    negative_file = "my_eng_negative_head.csv"
+
+    positive_file_path = os.path.join(dir_path, positive_file)
+    negative_file_path = os.path.join(dir_path, negative_file)
+
+    dataset_train = load_my_train_from_files(positive_file_path, negative_file_path)
+    sentiment140_train, sentiment140_test = load_sentiment140_from_directory(sentiment140_dir_path)
+
+    dataset_train += sentiment140_train
+    random.shuffle(dataset_train)
+
+    logging.info("Loaded dataset having {} tweets".format(len(dataset_train)))
+    return dataset_train, sentiment140_test
 
 
 def get_dataset_stats(data):
