@@ -219,10 +219,12 @@ class FeaturesToSentimentModel(TweetSentimentModel):
 
 
 class KerasFeaturesToSentimentModel(FeaturesToSentimentModel):
-    def __init__(self, tweet_to_features, keras_model=None, batch_size=256, num_epochs=1):
+    def __init__(self, tweet_to_features, keras_model=None, batch_size=256, num_epochs=1, dropout=0.2, recurrent_dropout=0.2):
         FeaturesToSentimentModel.__init__(self, tweet_to_features, keras_model)
         self.num_epochs = num_epochs
         self.batch_size = batch_size
+        self.dropout = dropout
+        self.recurrent_dropout = recurrent_dropout
 
     def save_features_to_sentiment(self, file_prefix):
         self.features_to_sentiment.save(file_prefix + ".keras.h5")
@@ -263,40 +265,92 @@ class KerasFeaturesToSentimentModel(FeaturesToSentimentModel):
 class KerasLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
     model_name = "lstm_features_to_sentiment"
 
-    def __init__(self, tweet_to_features, lstm_layer_sizes=[256, 32], **kwargs):
+    def __init__(self, tweet_to_features, lstm_layer_sizes=[256, 64], **kwargs):
         model = keras.models.Sequential()
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
 
         assert len(tweet_to_features.get_features_shape()) == 2, "Features shape {} isn't 2d".format(tweet_to_features.get_features_shape())
 
         if len(lstm_layer_sizes) > 1:
             model.add(keras.layers.LSTM(lstm_layer_sizes[0],
                                         return_sequences=True,
-                                        dropout=0.2,
-                                        recurrent_dropout=0.2,
+                                        dropout=self.dropout,
+                                        recurrent_dropout=self.recurrent_dropout,
                                         input_shape=tweet_to_features.get_features_shape()))
 
             for size in lstm_layer_sizes[1:-1]:
                 model.add(keras.layers.LSTM(size,
                                             return_sequences=True,
-                                            dropout=0.2,
-                                            recurrent_dropout=0.2))
+                                            dropout=self.dropout,
+                                            recurrent_dropout=self.recurrent_dropout))
 
-            model.add(keras.layers.LSTM(lstm_layer_sizes[-1], dropout=0.2, recurrent_dropout=0.2))
+            model.add(keras.layers.LSTM(lstm_layer_sizes[-1], dropout=self.dropout, recurrent_dropout=self.recurrent_dropout))
         else:
-            model.add(keras.layers.LSTM(lstm_layer_sizes[0], dropout=0.2, recurrent_dropout=0.2, input_shape=tweet_to_features.get_features_shape()))
+            model.add(keras.layers.LSTM(lstm_layer_sizes[0], dropout=self.dropout, recurrent_dropout=self.recurrent_dropout,
+                      input_shape=tweet_to_features.get_features_shape()))
         model.add(keras.layers.Dense(1, activation='sigmoid'))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
+
+class KerasGRUFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
+    model_name = "gru_features_to_sentiment"
+
+    def __init__(self, tweet_to_features, gru_layer_sizes=[256, 64], **kwargs):
+        model = keras.models.Sequential()
         KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
+
+        assert len(tweet_to_features.get_features_shape()) == 2, "Features shape {} isn't 2d".format(tweet_to_features.get_features_shape())
+
+        if len(gru_layer_sizes) > 1:
+            model.add(keras.layers.LSTM(gru_layer_sizes[0],
+                                        return_sequences=True,
+                                        dropout=self.dropout,
+                                        recurrent_dropout=self.recurrent_dropout,
+                                        input_shape=tweet_to_features.get_features_shape()))
+
+            for size in gru_layer_sizes[1:-1]:
+                model.add(keras.layers.LSTM(size,
+                                            return_sequences=True,
+                                            dropout=self.dropout,
+                                            recurrent_dropout=self.recurrent_dropout))
+
+            model.add(keras.layers.LSTM(gru_layer_sizes[-1], dropout=self.dropout, recurrent_dropout=self.recurrent_dropout))
+        else:
+            model.add(keras.layers.LSTM(gru_layer_sizes[0], dropout=self.dropout, recurrent_dropout=self.recurrent_dropout,
+                      input_shape=tweet_to_features.get_features_shape()))
+        model.add(keras.layers.Dense(1, activation='sigmoid'))
+
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+
+class KerasCNNFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
+    model_name = "cnn_features_to_sentiment"
+
+    def __init__(self, tweet_to_features, conv_layer_sizes=[128, 64, 32], dense_layer_size=32, **kwargs):
+        model = keras.models.Sequential()
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
+
+        model.add(keras.layers.Convolution1D(conv_layer_sizes[0], 3, padding='same', input_shape=tweet_to_features.get_features_shape()))
+        for size in conv_layer_sizes[1:]:
+            model.add(keras.layers.Convolution1D(size, 3, padding='same'))
+
+        model.add(keras.layers.Flatten())
+        model.add(keras.layers.Dropout(0.2))
+        model.add(keras.layers.Dense(dense_layer_size, activation='sigmoid'))
+        model.add(keras.layers.Dropout(0.2))
+        model.add(keras.layers.Dense(1, activation='sigmoid'))
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        self.model = model
 
 
 class KerasCLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
     model_name = "clstm_features_to_sentiment"
 
     def __init__(self, tweet_to_features, conv_layer_size=200, lstm_layer_size=150, **kwargs):
-        KerasTweetSentimentModel.__init__(self, **kwargs)
         model = keras.models.Sequential()
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
         model.add(keras.layers.Convolution1D(conv_layer_size,
                   5,
                   padding='valid',
@@ -309,7 +363,6 @@ class KerasCLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
         self.model = model
-        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
 
 
 class KerasDenseFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
@@ -330,7 +383,8 @@ class KerasDenseFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
 
 
 class KerasTweetSentimentModel(TweetSentimentModel):
-    def __init__(self, max_words=200000, max_tweet_length=25, embedding_vector_length=300, num_epochs=1, batch_size=128, model=None):
+    def __init__(self, max_words=200000, max_tweet_length=25, dropout=0.2, recurrent_dropout=0.2,
+                 embedding_vector_length=300, num_epochs=1, batch_size=128, model=None):
         TweetSentimentModel.__init__(self)
 
         self.tokenizer = keras.preprocessing.text.Tokenizer(num_words=max_words)
@@ -339,6 +393,8 @@ class KerasTweetSentimentModel(TweetSentimentModel):
         self.embedding_vector_length = embedding_vector_length
         self.num_epochs = num_epochs
         self.batch_size = batch_size
+        self.dropout = dropout
+        self.recurrent_dropout = recurrent_dropout
 
         self.model = model
 
@@ -411,8 +467,10 @@ class KerasTweetSentimentModel(TweetSentimentModel):
             return [2 * y[0] - 1 for y in ys]
 
 
-class KerasCLSTModel(KerasTweetSentimentModel):
-    def __init__(self, conv_layer_size=200, lstm_layer_size=180, **kwargs):
+class KerasCLSTMModel(KerasTweetSentimentModel):
+    model_name = "full_clstm"
+
+    def __init__(self, conv_layer_size=200, lstm_layer_size=150, **kwargs):
         KerasTweetSentimentModel.__init__(self, **kwargs)
         model = keras.models.Sequential()
         model.add(keras.layers.Embedding(self.max_words, self.embedding_vector_length, input_length=self.max_tweet_length))
@@ -431,7 +489,9 @@ class KerasCLSTModel(KerasTweetSentimentModel):
 
 
 class KerasCNNModel(KerasTweetSentimentModel):
-    def __init__(self, conv_layer_sizes=[128, 64, 32], dense_layer_size=180, **kwargs):
+    model_name = "full_cnn"
+
+    def __init__(self, conv_layer_sizes=[128, 64, 32], dense_layer_size=32, **kwargs):
         KerasTweetSentimentModel.__init__(self, **kwargs)
 
         model = keras.models.Sequential()
@@ -453,15 +513,15 @@ class KerasCNNModel(KerasTweetSentimentModel):
 class KerasLSTMModel(KerasTweetSentimentModel):
     model_name = "full_lstm"
 
-    def __init__(self, lstm_layer_sizes=[128, 32], dropout=0.2, **kwargs):
+    def __init__(self, lstm_layer_sizes=[256, 64], **kwargs):
         KerasTweetSentimentModel.__init__(self, **kwargs)
         model = keras.models.Sequential()
         model.add(keras.layers.embeddings.Embedding(self.max_words, self.embedding_vector_length, input_length=self.max_tweet_length))
 
         for size in lstm_layer_sizes[:-1]:
-            model.add(keras.layers.LSTM(size, return_sequences=True, dropout=0.2, recurrent_dropout=0.2))
+            model.add(keras.layers.LSTM(size, return_sequences=True, dropout=self.dropout, recurrent_dropout=self.recurrent_dropout))
 
-        model.add(keras.layers.LSTM(lstm_layer_sizes[-1], dropout=0.2, recurrent_dropout=0.2))
+        model.add(keras.layers.LSTM(lstm_layer_sizes[-1], dropout=self.dropout, recurrent_dropout=self.recurrent_dropout))
         model.add(keras.layers.Dense(1, activation='sigmoid'))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
@@ -471,15 +531,15 @@ class KerasLSTMModel(KerasTweetSentimentModel):
 class KerasGRUModel(KerasTweetSentimentModel):
     model_name = "full_gru"
 
-    def __init__(self, gru_layer_sizes=[128, 32], **kwargs):
+    def __init__(self, gru_layer_sizes=[256, 64], **kwargs):
         KerasTweetSentimentModel.__init__(self, **kwargs)
         model = keras.models.Sequential()
         model.add(keras.layers.embeddings.Embedding(self.max_words, self.embedding_vector_length, input_length=self.max_tweet_length))
 
         for size in gru_layer_sizes[:-1]:
-            model.add(keras.layers.GRU(size, return_sequences=True, dropout=0.2, recurrent_dropout=0.2))
+            model.add(keras.layers.GRU(size, return_sequences=True, dropout=self.dropout, recurrent_dropout=self.recurrent_dropout))
 
-        model.add(keras.layers.GRU(gru_layer_sizes[-1], dropout=0.2, recurrent_dropout=0.2))
+        model.add(keras.layers.GRU(gru_layer_sizes[-1], dropout=self.dropout, recurrent_dropout=self.recurrent_dropout))
         model.add(keras.layers.Dense(1, activation='sigmoid'))
 
         model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
