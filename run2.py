@@ -6,28 +6,76 @@ import models
 import datasets
 import json
 import logging
+import random
+
+random.seed(42)
 
 FORMAT = "%(asctime)s:%(levelname)s:%(name)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 
-def train_features_model(train_tweets, test_tweets, full_model_class_name, full_model_class_params, full_model_file_prefix):
-    model_class = models.find_model_class_by_name(full_model_class_name)
+def train_until_accuracy_isnt_improving(train_tweets, test_tweets, model, model_file_prefix, model_id, wait_epochs=2):
+    train_tweets = [t for t in train_tweets if t.polarity is not None]
+    # shuffle.random(train_tweets)
+    n_validation_tweets = 5000
+    assert len(train_tweets) >= 2 * n_validation_tweets
+    validation_tweets = train_tweets[:n_validation_tweets]
+    train_tweets = train_tweets[n_validation_tweets:]
+    protocol_file_name = "protocol.txt"
 
-    model = model_class(**full_model_class_params)
+    picked_test_accuracy = 0
+    best_validation_accuracy = 0
+    epochs_since_last_improved = 0
+    with open(protocol_file_name, "at") as protocol:
+        print(str(type(model)) + " " + model_id + "\n")
+        protocol.write(str(type(model)) + " " + model_id + "\n")
+        for epoch in range(15):
+            print("epoch", epoch)
+            model.train(train_tweets)
+            validation_accuracy = model.test(validation_tweets)
+            test_accuracy = model.test(test_tweets)
+            msg_accuracy = "validation accuracy = {}; test accuracy = {}".format(validation_accuracy, test_accuracy)
+            print(msg_accuracy)
+            protocol.write(msg_accuracy + "\n")
 
-    model.train(train_tweets)
-    model.save(full_model_file_prefix)
+            if validation_accuracy > best_validation_accuracy:
+                print("Improved accuracy: ", validation_accuracy)
+                epochs_since_last_improved = 0
+                best_validation_accuracy = validation_accuracy
+                picked_test_accuracy = test_accuracy
+                model.save(model_file_prefix)
+            else:
+                epochs_since_last_improved += 1
+
+            if epochs_since_last_improved >= wait_epochs:
+                print("Loss din't improve terminating")
+                protocol.write("Loss didn't improve, terminating\n")
+                msg_picked = "Best validation loss = {}; picked test loss = {}".format(best_validation_accuracy, picked_test_accuracy)
+                print(msg_picked)
+                protocol.write(msg_picked + "\n")
+                break
 
 
-def train_full_model(train_tweets, test_tweets, features_model_class_name, features_model_class_params, features_model_file_prefix):
+def train_features_model(train_tweets, test_tweets, features_model_class_name, features_model_class_params, features_model_file_prefix):
     model_class = models.find_model_class_by_name(features_model_class_name)
 
     model = model_class(**features_model_class_params)
 
     model.train(train_tweets)
     model.save(features_model_file_prefix)
-    model.train(test_tweets)
+
+
+def train_full_model(train_tweets, test_tweets, full_model_class_name, full_model_class_params, full_model_file_prefix):
+    model_class = models.find_model_class_by_name(full_model_class_name)
+
+    model = model_class(**full_model_class_params)
+
+    # model.train(train_tweets)
+    train_until_accuracy_isnt_improving(train_tweets, test_tweets, model,
+                                        full_model_file_prefix, full_model_file_prefix + "/" + full_model_class_name + "/" + str(full_model_class_params),
+                                        wait_epochs=2)
+    # model.save(full_model_file_prefix)
+    # print(model.test(test_tweets))
 
 
 def train_features_to_sentiment_model(train_tweets, test_tweets,
@@ -40,8 +88,12 @@ def train_features_to_sentiment_model(train_tweets, test_tweets,
     features_to_sentiment_model_class = models.find_model_class_by_name(features_to_sentiment_model_class_name)
     features_to_sentiment_model = features_to_sentiment_model_class(features_model, **features_to_sentiment_model_params)
 
-    features_to_sentiment_model.train(train_tweets)
-    features_to_sentiment_model.save(features_to_sentiment_model_file_prefix)
+    # features_to_sentiment_model.train(train_tweets)
+    train_until_accuracy_isnt_improving(train_tweets, test_tweets, features_to_sentiment_model,
+                                        features_to_sentiment_model_file_prefix,
+                                        features_to_sentiment_model_file_prefix + "/" + features_to_sentiment_model_class_name + "/" + str(features_to_sentiment_model_params),
+                                        wait_epochs=2)
+    # features_to_sentiment_model.save(features_to_sentiment_model_file_prefix)
 
 
 def main():
@@ -111,7 +163,7 @@ def main():
     full_model_file_prefix = args.full_model_file_prefix
 
     features_model_params = args.tweet_to_features_model_params
-    features_to_sentiment_model_params = args.tweet_to_features_model_params
+    features_to_sentiment_model_params = args.features_to_sentiment_model_params
     full_model_params = args.full_model_params
 
     train_tweets, test_tweets = datasets.load_dataset_by_name(dataset_name)
