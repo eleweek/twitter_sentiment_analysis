@@ -25,9 +25,9 @@ from datasets import TweetSentiment, Tweet
 
 _thismodule = sys.modules[__name__]
 
-# sys.path.append("cloned_dependencies/generating-reviews-discovering-sentiment")
-# import encoder as unsupervised_sentiment_neuron_encoder
-# sys.path.pop()
+sys.path.append("cloned_dependencies/generating-reviews-discovering-sentiment")
+import encoder as unsupervised_sentiment_neuron_encoder
+sys.path.pop()
 
 
 def grouper(iterable, n, fillvalue=None):
@@ -368,18 +368,21 @@ class KerasCLSTMFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
 class KerasDenseFeaturesToSentimentModel(KerasFeaturesToSentimentModel):
     model_name = "dense_features_to_sentiment"
 
-    def __init__(self, tweet_to_features, dense_layer_sizes=[100, 1], **kwargs):
+    def __init__(self, tweet_to_features, hidden_dense_layer_sizes=[100], **kwargs):
         model = keras.models.Sequential()
+        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
 
         assert len(tweet_to_features.get_features_shape()) == 1, "Features shape {} isn't 1d".format(tweet_to_features.get_features_shape())
 
-        model.add(keras.layers.Dense(dense_layer_sizes[0], input_shape=tweet_to_features.get_features_shape()))
-        for size in dense_layer_sizes[1:]:
-            model.add(keras.layers.Dense(size))
+        if hidden_dense_layer_sizes:
+            model.add(keras.layers.Dense(hidden_dense_layer_sizes[0], input_shape=tweet_to_features.get_features_shape()))
+            for size in hidden_dense_layer_sizes[1:]:
+                model.add(keras.layers.Dense(size))
+            model.add(keras.layers.Dense(1, activation='sigmoid'))
+        else:
+            model.add(keras.layers.Dense(1, activation='sigmoid', input_shape=tweet_to_features.get_features_shape()))
 
-        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-
-        KerasFeaturesToSentimentModel.__init__(self, tweet_to_features, model, **kwargs)
+        model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
 
 
 class KerasTweetSentimentModel(TweetSentimentModel):
@@ -565,7 +568,7 @@ class UnsupervisedSentimentNeuronEncoder(TweetToFeaturesModel):
     def train(self, train_data):
         assert NotImplementedError("Unsupervised Sentiment Neuron model doesn't support training, because they haven't released the necessary code (yet ?)")
 
-    def batch_get_features(self, tweets):
+    def batch_get_features(self, tweets, verbose=None):
         features = self.model.transform([tweet.get_text() for tweet in tweets])
         return features
 
@@ -576,6 +579,9 @@ class UnsupervisedSentimentNeuronEncoder(TweetToFeaturesModel):
 
     def get_features_number(self):
         return 4096  # number of features in pre-trained model
+
+    def get_features_shape(self):
+        return (self.get_features_number(), )
 
 
 class Doc2VecEmbedding(TweetToFeaturesModel):
