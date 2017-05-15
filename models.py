@@ -11,7 +11,7 @@ from collections import OrderedDict
 import numpy as np
 
 from gensim.models.doc2vec import TaggedDocument
-from gensim.models import Doc2Vec
+from gensim.models import Doc2Vec, Word2Vec
 
 import fasttext
 
@@ -597,10 +597,6 @@ class Doc2VecEmbedding(TweetToFeaturesModel):
 
         return new_instance
 
-    @staticmethod
-    def create_from_argv(*args):
-        return Doc2VecEmbedding(*map(int, args))
-
     def __init__(self, epochs, min_count=1, window=10, size=100, sample=1e-5, negative=5, workers=12, *args, **kwargs):
         self.model = Doc2Vec(iter=epochs, min_count=min_count, window=window, size=size, sample=sample, negative=negative, workers=workers, *args, **kwargs)
         self._epochs = epochs
@@ -634,6 +630,46 @@ class Doc2VecEmbedding(TweetToFeaturesModel):
     @staticmethod
     def _train_item_tag(i):
         return "TRAIN_ITEM_{}".format(i)
+
+
+class Word2VecEmbedding(TweetToFeaturesModel):
+    model_name = "word2vec_embedding"
+
+    def save(self, filename_prefix):
+        self.model.save(filename_prefix)
+
+    @staticmethod
+    def load(filename_prefix):
+        new_instance = Word2VecEmbedding(None)
+        new_instance.model = Word2Vec.load(filename_prefix)
+
+        return new_instance
+
+    def __init__(self, epochs, min_count=1, window=10, size=100, sample=1e-5, negative=5, workers=12, *args, **kwargs):
+        self.model = Word2Vec(iter=epochs, min_count=min_count, window=window, size=size, sample=sample, negative=negative, workers=workers, *args, **kwargs)
+        self._epochs = epochs
+        self.max_words = 25
+
+    def train(self, train_data):
+        logging.info("Training Word2Vec model")
+
+        texts = [tweet.get_text() for tweet in train_data]
+        self.model.build_vocab(texts)
+        self.model.train(texts, epochs=self.model.iter, total_examples=len(texts))
+
+    def get_features(self, tweet):
+        features = np.zeros((self.get_max_words(), self.get_features_number()), dtype=np.float32)
+
+        for i, word in enumerate(tweet.get_words()[:self.get_max_words()]):
+            features[i] = self.model.infer_vector[word]
+
+        return features
+
+    def get_features_number(self):
+        return self.model.vector_size
+
+    def get_features_shape(self):
+        return (self.model.vector_size(), self.max_words)
 
 
 class RussianSentimentLexicon(object):
@@ -682,11 +718,6 @@ class SimpleUnigramModel(TweetToFeaturesModel):
 
     def __init__(self, sentiment_lexicon_filename):
         self.lexicon = RussianSentimentLexicon(sentiment_lexicon_filename)
-
-    @staticmethod
-    def create_from_argv(*args):
-        assert len(args) == 1
-        return SimpleUnigramModel(*args)
 
     @staticmethod
     def load(filename):
