@@ -549,6 +549,25 @@ class KerasGRUModel(KerasTweetSentimentModel):
         self.model = model
 
 
+class UnsupervisedSentimentNeuronSingle(TweetSentimentModel):
+    model_name = "unsupervised_sentiment_neuron_single"
+
+    def __init__(self):
+        self.model = unsupervised_sentiment_neuron_encoder.Model()
+
+    @staticmethod
+    def load(file_name):
+        return UnsupervisedSentimentNeuronSingle()
+
+    def train(self, train_data):
+        assert NotImplementedError("Unsupervised Sentiment Neuron model doesn't support training, because they haven't released the necessary code (yet ?)")
+
+    def predict_sentiment_real(self, tweet, verbose=None):
+        features = self.model.transform([tweet.get_text()])
+        # TODO: normalization from -~4..2 to -1 1, 0 seems neutral though
+        return features[0, 2388]
+
+
 class UnsupervisedSentimentNeuronEncoder(TweetToFeaturesModel):
     """
     Class representing model from OpenAI's "Learning to Generate Reviews and Discovering Sentiment":
